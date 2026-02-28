@@ -1,0 +1,457 @@
+# ideas.yaml — all game ideas, tagged per ideas-schema.yaml
+# Add new ideas at the bottom. IDs are sequential, never reuse.
+
+# =============================================================================
+# TRANSPORT
+# =============================================================================
+
+- id: 1
+  idea: "Rune paths (solid transport between groups)"
+  desc: >
+    Rune paths = belts for solid resources, used ONLY between building groups.
+    Resource models drop onto the path and roll along glowing runes.
+    Tiered: T1/T2/T3 — each tier changes path visuals, speed, and capacity.
+    Tier upgrade is GLOBAL — unlocking T2 auto-upgrades all existing paths.
+    Within groups, manifold handles distribution (no paths needed).
+  system: transport
+  tier: A
+  type: mechanic
+  status: locked
+
+- id: 2
+  idea: "Pipes/channels (liquid transport between groups)"
+  desc: >
+    Liquids transported via separate pipe/channel system between building groups.
+    Magical aqueducts, underground conduits. Visually distinct from rune paths.
+    Within groups, liquid buildings share via manifold (no pipes needed).
+  system: transport
+  tier: A
+  type: mechanic
+  status: locked
+
+# =============================================================================
+# PRODUCTION
+# =============================================================================
+
+- id: 3
+  idea: "Flexible recipe substitution"
+  desc: >
+    Recipes accept resource CATEGORIES, not specific items. Three efficiency levels:
+    optimal (100%), allowed (150% cost), suboptimal (300% cost).
+    No hard blocks — production never stops completely.
+    Biome-specific resources have different efficiency in different buildings.
+  system: production
+  tier: A
+  type: mechanic
+  status: locked
+
+- id: 4
+  idea: "Resource quality (2 levels)"
+  desc: >
+    All resources have quality: normal / high (simplified from 3 to 2 levels).
+    Quality affects recipe output and efficiency.
+    Biome influences which quality is common (volcanic = high metal, forest = high wood).
+    High quality = less required in recipes. Refinement buildings at nodes
+    can upgrade normal → high at a cost.
+  system: production
+  tier: A
+  type: mechanic
+  status: locked
+
+- id: 5
+  idea: "Group-level management"
+  desc: >
+    Player manages building GROUPS as units, not individual buildings.
+    Energy allocation, priority, pause/resume — all at group level.
+    Chain manager is the primary optimization tool.
+  system: production
+  tier: A
+  type: ux
+  status: locked
+
+- id: 6
+  idea: "Easy Mall (first building group)"
+  desc: >
+    Mall = building group with constructor as first building. Trivial to set up.
+    Feed it base resources → it produces buildings and tools.
+    Mall is the safe default destination for all resources.
+    No hand-crafting in the game — everything through Mall group.
+    Grows as a city district as player adds buildings.
+  system: production
+  tier: A
+  type: balance
+  status: locked
+
+# =============================================================================
+# WORLD
+# =============================================================================
+
+- id: 7
+  idea: "Deep systemic world (BotW-style)"
+  desc: >
+    Weather, elements, creatures, vegetation — all interconnected simulation.
+    Fire + wind = wildfire. Rain fills water sources. Lightning strikes metal.
+    Cold freezes water. Everything affects production.
+    World runs independently of player — things happen whether you're watching or not.
+  system: world
+  tier: A
+  type: mechanic
+  status: locked
+
+- id: 8
+  idea: "Biome hazards = threat + opportunity"
+  desc: >
+    Each biome has signature hazards. Volcanic = lava eruptions.
+    Ocean = storms/tsunamis. Forest = wildfires. Desert = sandstorms.
+    Hazards destroy buildings BUT destroyed area gets enhanced properties.
+    Player can deliberately sacrifice buildings for bonuses.
+  system: world
+  tier: A
+  type: mechanic
+  status: locked
+
+- id: 9
+  idea: "Sacrifice mechanic (informed gambling)"
+  desc: >
+    Sacrifice buildings placed in hazard zones. Hazard ZONE and TIMING are
+    predictable (player sees them in advance). But outcome is probabilistic —
+    player sees odds (e.g. 70% hit = bonus, 30% miss = wasted building).
+    Planning = WHERE to place. Excitement = WILL it hit.
+    Hit → tile enhanced + sacrifice bonus. Miss → building lost for nothing.
+  system: world
+  tier: B
+  type: mechanic
+  status: locked
+
+- id: 10
+  idea: "Biome-specific buildings"
+  desc: >
+    ~30% universal buildings (work everywhere), ~70% biome-specific.
+    Different biome = different available buildings = different strategy.
+    Universal buildings are the "glue" for multi-biome maps.
+  system: world
+  tier: A
+  type: content
+  status: locked
+
+# =============================================================================
+# CREATURES
+# =============================================================================
+
+- id: 11
+  idea: "Minions = biome-native faceless workers"
+  desc: >
+    Minions come from the biome. Different biome = different minion types
+    with different stat distributions per task. No names, no personality.
+    Visual models that run around doing tasks.
+  system: creatures
+  tier: A
+  type: mechanic
+  status: locked
+
+- id: 12
+  idea: "Idle minions = beauty as emergent consequence"
+  desc: >
+    Beauty is NOT a trade-off — it's an emergent reward for good automation.
+    Factory runs well → minions are free → they auto-decorate (player picks style).
+    Factory struggling → all minions busy → base looks utilitarian.
+    Player doesn't assign minions to decorate — it happens when efficiency is high.
+    Cosmetic upgrades are plentiful. Beauty = visual mastery indicator.
+  system: creatures
+  tier: B
+  type: mechanic
+  status: locked
+
+- id: 13
+  idea: "Creatures = multi-role entities with behavior archetypes"
+  desc: >
+    No separate enemy system. Creatures have behavior archetypes:
+    - Ambient: live independently, resource for hunting/breeding/harvesting
+    - Territorial: attack when player expands into their zone
+    - Invasive: expand on their own, reclaim player territory if unchecked
+    - Event-born: spawn from mini-opus events, test preparedness
+    - Opus-linked: tied to main opus, final challenge of the run
+    Player choices determine role: kill → loot, breed → resource,
+    harvest nests → passive income, convert → allies, trade → economy.
+    Combat is passive: defense buildings (imp camps) as production chains.
+    Imp camp = building that consumes weapons+food → produces protection+loot.
+    T3 camps can clear enemies for rare opus resources.
+  system: creatures
+  tier: A
+  type: mechanic
+  status: locked
+
+- id: 14
+  idea: "Creature trading/economy"
+  desc: >
+    In water biome: catch lots of fish, sell for resources you lack.
+    Each biome has abundant creature-resources that can offset weaknesses.
+    Creates biome-specific economic strategies.
+  system: creatures
+  tier: B
+  type: mechanic
+  status: locked
+
+# =============================================================================
+# PROGRESSION
+# =============================================================================
+
+- id: 15
+  idea: "Magnum Opus = production milestone tree"
+  desc: >
+    Opus is a TREE of production throughput milestones, not item crafting.
+    Main path nodes: "produce X resource at Y/min" — measurable, clear.
+    Side branches: mini-opus events (optional challenges for bonuses/meta-currency).
+    Final node: sustain all main-path rates simultaneously for a duration.
+    Player sees entire tree at run start and plans strategy.
+    Same Opus in matching biome = easier milestones. Mismatched = need synthesis groups.
+  system: progression
+  tier: A
+  type: mechanic
+  status: locked
+
+- id: 16
+  idea: "Mini-Opus = branches within Opus tree"
+  desc: >
+    NOT a separate event system. Mini-opus are side branches of the Opus tree.
+    Attached to main-path nodes. Trigger types:
+    - On-demand (player activates when ready)
+    - Time-based (deadline from branch appearance)
+    - Conditional (triggers when production state matches)
+    Completed = bonus + meta-currency. Missed = no main-path penalty, but lost bonus.
+    Examples: "survive hazard while maintaining rate", "supply resources to trader".
+  system: progression
+  tier: A
+  type: mechanic
+  status: locked
+
+- id: 17
+  idea: "Meta-currency system (3 types)"
+  desc: >
+    3 currency types: Gold (economy/production), Souls (creatures/combat),
+    Knowledge (technology/recipes). Each earned from matching mini-opus types.
+    Main Opus multiplies ALL currencies: x1.5 / x2 / x3 based on difficulty.
+    Currencies spent on permanent unlocks between runs.
+  system: meta
+  tier: A
+  type: mechanic
+  status: locked
+
+- id: 18
+  idea: "Encounter-gated progression"
+  desc: >
+    Player doesn't get full building freedom from start.
+    Encounters (mini-opuses) unlock new possibilities mid-run.
+    Forces adaptation and prevents "solve the whole run in first 5 minutes".
+    Like AtS glades but less scary — you roughly know what to expect.
+  system: progression
+  tier: A
+  type: mechanic
+  status: locked
+
+# =============================================================================
+# ENERGY
+# =============================================================================
+
+- id: 19
+  idea: "Energy surplus/deficit as throttle"
+  desc: >
+    Surplus energy → production chains speed up.
+    Deficit → chains slow down (player picks which chains to throttle).
+    Creates dynamic optimization: where to invest energy for best ROI?
+    Chain-level control, not building-level.
+  system: energy
+  tier: A
+  type: mechanic
+  status: locked
+
+# =============================================================================
+# UX
+# =============================================================================
+
+- id: 20
+  idea: "Built-in production calculator"
+  desc: >
+    In-game calculator shows: what you need to produce X items/min,
+    which buildings, which resources, which chains.
+    No alt-tabbing to external tools. Factorio-quality or better.
+  system: ui
+  tier: B
+  type: ux
+  status: locked
+
+- id: 21
+  idea: "Chain visualizer"
+  desc: >
+    Visual overlay showing all production chains, their throughput,
+    bottlenecks, energy allocation. Like Factorio's production stats
+    but more visual and integrated into the game view.
+  system: ui
+  tier: B
+  type: ux
+  status: locked
+
+- id: 22
+  idea: "Efficiency dashboard / statistics"
+  desc: >
+    Real-time graphs: production rates, consumption, energy balance,
+    minion allocation, resource stockpiles. Historical data per run.
+  system: ui
+  tier: B
+  type: ux
+  status: locked
+
+# =============================================================================
+# CUT IDEAS (resolved or out of scope)
+# =============================================================================
+
+- id: 23
+  idea: "Terraforming mechanics"
+  desc: "Over-scope for roguelike."
+  system: world
+  tier: C
+  type: mechanic
+  status: cut
+
+- id: 24
+  idea: "Underground gameplay"
+  desc: "Over-scope for roguelike."
+  system: world
+  tier: C
+  type: mechanic
+  status: cut
+
+- id: 25
+  idea: "Multi-story buildings"
+  desc: "Over-scope for roguelike."
+  system: world
+  tier: C
+  type: mechanic
+  status: cut
+
+- id: 26
+  idea: "Water flow mechanics"
+  desc: "Over-scope for roguelike."
+  system: world
+  tier: C
+  type: mechanic
+  status: cut
+
+- id: 27
+  idea: "Waterfall power generation"
+  desc: "Covered by biome-specific energy buildings."
+  system: energy
+  tier: C
+  type: mechanic
+  status: cut
+
+- id: 28
+  idea: "Slope/cliff building rules"
+  desc: "Partially merged into #34 (biome-landscape building placement)."
+  system: world
+  tier: C
+  type: mechanic
+  status: cut
+
+- id: 29
+  idea: "Global cloud storage"
+  desc: "Replaced by Building Groups mechanic (#33). Groups with storage buildings solve this."
+  system: economy
+  tier: B
+  type: mechanic
+  status: cut
+
+- id: 30
+  idea: "Enemy system design"
+  desc: "Merged into creature system (#13). Creatures have behavior archetypes, no separate enemy system."
+  system: combat
+  tier: A
+  type: mechanic
+  status: cut
+
+- id: 31
+  idea: "Tier system (3 tiers, encounter-gated)"
+  desc: >
+    3 tiers for 1-2h runs. Each tier = meaningful jump.
+    T1 (setup, ~25min): basic extraction, simple recipes, rune paths T1, first Mall group.
+    T2 (expansion, ~35min): complex recipes, biome buildings, pipes, rune paths T2.
+    T3 (opus push, ~30min): final recipes, rune paths T3, opus groups.
+    Transition via encounter events (#18). Tier upgrade is global —
+    all rune paths auto-upgrade when new tier unlocks.
+  system: progression
+  tier: A
+  type: balance
+  status: locked
+
+- id: 32
+  idea: "Art style: 3D isometric with pixel-art shaders"
+  desc: >
+    3D models, fixed isometric camera, post-processing shaders
+    (outline, posterization, pixelation). Smooth animations,
+    efficient production pipeline, unique visual identity.
+  system: world
+  tier: B
+  type: visual
+  status: locked
+
+# =============================================================================
+# NEW IDEAS (from grooming session)
+# =============================================================================
+
+- id: 33
+  idea: "Building Groups (universal production mechanic)"
+  desc: >
+    Core mechanic replacing separate Mall/node/warehouse concepts.
+    Adjacent buildings form a GROUP. Inside a group, resources distribute
+    automatically via manifold (no paths needed). Identical buildings
+    chain freely (horizontal, vertical, grid). Different buildings need
+    one adjacency connection — system auto-optimizes internal flow.
+    Internal connections visualized as mini rune paths (consistent look).
+    Between groups: player-placed rune paths and pipes.
+    Groups are the unit of management in chain manager (energy, priority).
+    Constraints: landscape (buildings tied to terrain), cost, recipe dependencies.
+  system: production
+  tier: A
+  type: mechanic
+  status: locked
+
+- id: 34
+  idea: "Biome-landscape building placement"
+  desc: >
+    Buildings tied to specific landscape features. Miners only on ore veins,
+    lava siphons only near lava, etc. This naturally limits group size
+    and composition — you can't put everything in one mega-group.
+    Buildings placed on matching terrain grow organic mini-factories around them.
+  system: world
+  tier: A
+  type: mechanic
+  status: locked
+
+- id: 35
+  idea: "Combat groups = organic resource pipeline"
+  desc: >
+    Combat groups are the PRIMARY way to obtain organic resources.
+    Organics (wood, hides, herbs, creature parts) cannot be mined from terrain.
+    Must come from creatures: farming/breeding OR hunting/killing (same pipeline).
+    Imp camp: input weapons+food → output protection+organic loot.
+    Breeding pen: input food+water → output renewable organic materials.
+    T3 combat groups clear enemy zones for rare opus resources.
+    Combat groups are mandatory in every run — organics are required for recipes.
+    Scales like any resource group in chain manager.
+  system: creatures
+  tier: A
+  type: mechanic
+  status: locked
+
+- id: 36
+  idea: "Synthesis groups (resource creation without terrain)"
+  desc: >
+    Not all resources exist naturally in every biome. Synthesis groups
+    create base resources from other base resources without needing terrain.
+    Example: tree farm (water input → wood output) in a volcanic biome.
+    Placed anywhere on valid ground. Another type of resource node, but artificial.
+    Adds strategic layer: which resources to extract vs synthesize.
+  system: production
+  tier: A
+  type: mechanic
+  status: locked

@@ -1,0 +1,42 @@
+# ideas-schema.yaml — strict tag registry for ideas.yaml
+# ALL values in ideas.yaml MUST use tags defined here. No freeform.
+
+# --- SYSTEMS ---
+# What part of the game this idea belongs to
+systems:
+  - production    # buildings, recipes, crafting, resource chains
+  - transport     # logistics, conveyors, routing, throughput
+  - world         # biomes, terrain, weather, hazards, environment
+  - creatures     # minions, enemies, fauna, ecosystem
+  - combat        # defense, attacks, military buildings
+  - energy        # power generation, distribution, surplus/deficit
+  - progression   # tiers, unlocks, tech tree, opus tree
+  - meta          # between-run progression, currencies, scoring
+  - economy       # resources, trading, storage, market
+  - ui            # interface, UX, calculators, visualizers
+  - audio         # music, sound effects, ambiance
+
+# --- TIERS ---
+# How critical this idea is to the core game
+tiers:
+  - A  # Core — game doesn't work without this
+  - B  # Important — significantly enhances the game
+  - C  # Nice-to-have — can be added post-MVP
+
+# --- TYPES ---
+# What kind of idea this is
+types:
+  - mechanic   # gameplay system, rule, interaction
+  - visual     # how something looks, animations, feedback
+  - content    # specific items, buildings, biomes, creatures
+  - ux         # interface pattern, workflow, player convenience
+  - balance    # tuning, numbers, difficulty curve
+  - narrative  # lore, flavor, world-building context
+
+# --- STATUSES ---
+statuses:
+  - raw        # just captured, not evaluated
+  - discuss    # needs discussion / has open questions
+  - locked     # approved, part of design
+  - cut        # rejected or deferred indefinitely
+  - parked     # interesting but not for current scope
