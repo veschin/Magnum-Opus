@@ -1,0 +1,41 @@
+features:
+  building-groups:
+    stage: prd
+    tests: absent
+    review: passed
+    issues: 0
+  creatures:
+    stage: prd
+    tests: absent
+    review: passed
+    issues: 0
+  energy:
+    stage: prd
+    tests: absent
+    review: passed
+    issues: 0
+  meta:
+    stage: prd
+    tests: absent
+    review: passed
+    issues: 0
+  progression:
+    stage: prd
+    tests: absent
+    review: passed
+    issues: 0
+  transport:
+    stage: prd
+    tests: absent
+    review: passed
+    issues: 0
+  ux:
+    stage: prd
+    tests: absent
+    review: passed
+    issues: 0
+  world:
+    stage: prd
+    tests: absent
+    review: passed
+    issues: 0

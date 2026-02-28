@@ -1,0 +1,32 @@
+features:
+  - id: building-groups
+    name: "Building Groups"
+    stage: prd
+
+  - id: transport
+    name: "Transport"
+    stage: prd
+
+  - id: world
+    name: "World & Biomes"
+    stage: prd
+
+  - id: creatures
+    name: "Creatures & Combat"
+    stage: prd
+
+  - id: progression
+    name: "Progression"
+    stage: prd
+
+  - id: meta
+    name: "Meta-Progression"
+    stage: prd
+
+  - id: energy
+    name: "Energy"
+    stage: prd
+
+  - id: ux
+    name: "UX Tools"
+    stage: prd

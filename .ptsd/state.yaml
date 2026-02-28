@@ -1,0 +1,57 @@
+features:
+  building-groups:
+    stage: prd
+    hashes:
+    scores:
+      prd:
+        score: 9
+        at: "2026-02-28T17:39:24.916752723+03:00"
+  creatures:
+    stage: prd
+    hashes:
+    scores:
+      prd:
+        score: 9
+        at: "2026-02-28T17:39:26.472794255+03:00"
+  energy:
+    stage: prd
+    hashes:
+    scores:
+      prd:
+        score: 9
+        at: "2026-02-28T17:39:28.068605827+03:00"
+  meta:
+    stage: prd
+    hashes:
+    scores:
+      prd:
+        score: 8
+        at: "2026-02-28T17:39:27.557194974+03:00"
+  progression:
+    stage: prd
+    hashes:
+    scores:
+      prd:
+        score: 9
+        at: "2026-02-28T17:39:27.012051854+03:00"
+  transport:
+    stage: prd
+    hashes:
+    scores:
+      prd:
+        score: 9
+        at: "2026-02-28T17:39:25.479418913+03:00"
+  ux:
+    stage: prd
+    hashes:
+    scores:
+      prd:
+        score: 8
+        at: "2026-02-28T17:39:28.61917646+03:00"
+  world:
+    stage: prd
+    hashes:
+    scores:
+      prd:
+        score: 8
+        at: "2026-02-28T17:39:25.973439011+03:00"
