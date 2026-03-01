@@ -52,7 +52,7 @@ calculator_tests:
         iron_smelter: 2            # 2 iron_ore → 1 iron_bar, need 2/min
         copper_smelter: 1          # 2 copper_ore → 1 copper_bar, need 1/min
         steel_forge: 1             # 1 steel per 200 ticks
-      energy_needed: 68            # 4*5+2*5+2*10+1*10+1*18 = 68
+      energy_needed: 78            # 4*5+2*5+2*10+1*10+1*18 = 78
 
   # ── Organic chain (requires combat group) ──
 
