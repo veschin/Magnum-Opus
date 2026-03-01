@@ -21,9 +21,18 @@ The Factorio early-game production loop — finding bottlenecks, building chains
 - **Against the Storm**: roguelike run structure, event system, biome variety
 - **Breath of the Wild**: interconnected systemic world (weather, elements, creatures)
 
+### Core logistics model
+
+Two resource types with fundamentally different logistics:
+- **Buildings**: produced by Mall group → player Inventory (global) → placed on map via command
+- **Resources**: exist only inside group manifolds and transport containers — never in inventory
+
+Starting kit: small set of free buildings + resources to bootstrap first extraction group and Mall.
+
 ### Tech direction
 
-- ECS architecture from day one
+- ECS architecture from day one — simulation-first (see docs/ARCH.md)
+- Deterministic simulation: same seed + same commands = identical run
 - 3D isometric with pixel-art post-processing shaders
 - Fixed camera, god-view perspective
 
@@ -48,6 +57,9 @@ The universal production mechanic. All factory gameplay operates through buildin
 - Each group has configurable input receivers and output senders
 - Groups are the unit of management in chain manager (energy allocation, priority, pause/resume)
 - Buildings merge visually into factory structures as the group grows
+- Buildings are produced by Mall → go to player Inventory → placed from Inventory (costs nothing extra beyond production)
+- Each building has a decorative minion (1:1). Minions are visual-only, reflecting production state
+- In combat buildings, visible minion count reflects supply ratio (low supply → fewer visible warriors)
 
 **Group types by purpose (same mechanic, different composition):**
 - **Extraction group**: miners/collectors on natural veins — extract raw resources from terrain
@@ -90,8 +102,9 @@ Resource movement between building groups. Two systems: rune paths for solids, p
 **Problem:** Logistics between production clusters is the core spatial puzzle. The transport system must be visually satisfying (resources visibly moving), mechanically clear (throughput limits, routing), and low-friction (global tier upgrades, no per-segment management).
 
 **How it works:**
-- Rune paths: solid resources. Player draws path from group output to group input. Resource models drop onto path and roll. Throughput = path tier capacity.
-- Pipes/channels: liquid resources. Separate visual system (stone aqueducts with glowing liquid). Same routing mechanic as paths.
+- **Early-game (before paths):** minions auto-carry resources between nearby groups — slow, short-range, automatic fallback transport
+- **Rune paths:** solid resources. Player draws path from group output to group input. Resource models drop onto path and roll. Throughput = path tier capacity.
+- **Pipes/channels:** liquid resources. Separate visual system (stone aqueducts with glowing liquid). Same routing mechanic as paths.
 - Tiers: T1 (basic, slow) → T2 (medium) → T3 (fast, wide). Unlocking a new tier globally upgrades ALL existing paths and pipes automatically.
 - Paths and pipes occupy map tiles. Routing around terrain and other groups is the puzzle.
 
@@ -103,6 +116,7 @@ Resource movement between building groups. Two systems: rune paths for solids, p
 - AC5: Path throughput is capped by tier; excess resources queue at sender
 - AC6: Paths and pipes cannot overlap on the same tile (must route around)
 - AC7: Destroying a path segment disconnects the route; resources stop flowing
+- AC8: Before any paths exist, minions auto-carry resources between nearby groups at reduced speed
 
 **Non-goals:**
 - Speed lines, packing, long-range teleport (cut from design)
@@ -132,6 +146,8 @@ The procedurally generated environment: biomes, terrain, hazards, weather, and t
 - Hazards: biome-specific (eruptions, storms, wildfires, sandstorms). Predictable zone and timing. Destroy buildings but enhance affected tiles.
 - Sacrifice mechanic: place sacrifice buildings in hazard zones. Player sees odds (e.g. 70% bonus / 30% miss). Hit = tile enhanced + bonus. Miss = building lost.
 - Systemic interactions: fire + wind = wildfire spread. Rain fills water. Cold freezes water. All affect production.
+- **Fog of war:** map starts hidden. Watchtower buildings reveal cells in radius (like Factorio radar). Simulation runs regardless of visibility.
+- **Resource quality is biome-contextual:** same resource has different quality per biome. Example: rotten wood = NORMAL in forest biome, HIGH in undead biome. Regular wood = HIGH in forest, unavailable in undead. Recipes specify quality requirements — biome determines which resources satisfy them.
 
 **Acceptance criteria:**
 - AC1: Map generation produces biome-specific terrain with resource veins, liquid sources, and hazard zones
@@ -141,6 +157,8 @@ The procedurally generated environment: biomes, terrain, hazards, weather, and t
 - AC5: Hazard destroying a tile applies the enhancement property to that tile
 - AC6: At least 3 systemic element interactions are functional (fire+wind, rain+soil, cold+water)
 - AC7: World simulation runs independently of player camera position
+- AC8: Watchtower building reveals fog in configurable radius around it
+- AC9: Player cannot place buildings on hidden (fogged) tiles
 
 **Non-goals:**
 - Terraforming (raising/lowering terrain)
@@ -179,7 +197,12 @@ Living ecosystem of biome-native creatures. Combat groups are a core resource pi
   - Combat groups scale like any resource group: more buildings = more throughput
 - Minions: biome-native faceless workers. Different stat distributions per biome. No names, no personality.
 - Idle minions auto-decorate buildings (player picks style). Beauty = emergent indicator of factory efficiency.
-- Creature trading: biome-abundant creatures can be traded for resources the biome lacks.
+- **Creature nests** = tier gate encounters. Nests are map entities with tier and hostility:
+  - T1→T2: clear a T1 creature nest (combat group overpowers it)
+  - T2→T3: clear a T2 creature nest (requires stronger combat chains)
+  - T3 unlocks "EXTRACT" mode on cleared nests: 2x consumption → bonus organic output
+  - Hostile factions = required targets for some mini-opus. Non-hostile can be killed/extracted by choice.
+- **Trading:** Trader building converts surplus resources → meta-currency with inflation (more you trade same resource → worse rate). Satisfactory-ticket model.
 
 **Acceptance criteria:**
 - AC1: Each biome spawns creatures with at least 3 of the 5 archetypes
@@ -189,6 +212,9 @@ Living ecosystem of biome-native creatures. Combat groups are a core resource pi
 - AC5: Under-supplied combat group loses effectiveness; enemies break through, organic output drops
 - AC6: T3 combat group can clear an enemy zone and drop rare resources
 - AC7: Organic resources are ONLY obtainable through combat/breeding groups (no terrain extraction)
+- AC10: Creature nests exist on map as tier-gated entities; clearing a nest of matching tier unlocks next tier
+- AC11: T3 EXTRACT mode on cleared nests doubles combat group consumption and output in nest vicinity
+- AC12: Trader building accepts surplus resources and converts to meta-currency at diminishing rates
 - AC8: Idle minions with no tasks auto-decorate nearby buildings
 - AC9: Minion decoration activity ceases when all minions are assigned to tasks
 
@@ -233,11 +259,11 @@ In-run progression through the Opus tree (production milestones + mini-opus bran
   - Trigger types: on-demand (activate when ready), time-based (deadline), conditional (state match)
   - Completed = bonus + meta-currency. Missed = no penalty on main path, but lost bonus
   - Examples: "survive ash storm while maintaining 5/min rate", "supply 10 wood to wandering trader"
-- **3 Tiers (encounter-gated):**
+- **3 Tiers (nest-gated):**
   - T1 (setup, ~25 min): basic extraction, simple recipes, T1 rune paths, first Mall group
-  - T2 (expansion, ~35 min): complex recipes, biome buildings, pipes, T2 paths
-  - T3 (opus push, ~30 min): final recipes, T3 paths, opus groups
-  - Encounters on the map unlock next tier when completed
+  - T2 (expansion, ~35 min): complex recipes, biome buildings, pipes, T2 paths. Unlocked by clearing a T1 creature nest.
+  - T3 (opus push, ~30 min): final recipes, T3 paths, opus groups. Unlocked by clearing a T2 creature nest.
+  - All recipes for a tier unlock immediately on tier transition. Buildings auto-upgrade on tier unlock (no demolish+rebuild).
 
 **Acceptance criteria:**
 - AC1: Opus tree nodes are production throughput milestones (resource + rate), not item crafting goals
@@ -246,8 +272,10 @@ In-run progression through the Opus tree (production milestones + mini-opus bran
 - AC4: Mini-opus branches are visually attached to their parent main-path node
 - AC5: Completing a mini-opus branch awards meta-currency; skipping it has no main-path penalty
 - AC6: Final Opus node requires simultaneous sustain of all main-path rates
-- AC7: T2 buildings/recipes are inaccessible until T1 encounter is completed
-- AC8: T3 buildings/recipes are inaccessible until T2 encounter is completed
+- AC7: T2 buildings/recipes are inaccessible until T1 creature nest is cleared
+- AC8: T3 buildings/recipes are inaccessible until T2 creature nest is cleared
+- AC10: All recipes for a tier become available immediately on tier unlock
+- AC11: Existing buildings auto-upgrade to new tier visually and functionally on tier unlock
 - AC9: Completing the final Opus node triggers run-end sequence with scoring
 
 **Non-goals:**
@@ -278,6 +306,7 @@ Between-run progression: currencies earned from runs, permanent unlocks, and dif
 - 3 currencies: Gold (from economy/production mini-opus), Souls (from creature/combat mini-opus), Knowledge (from technology/discovery mini-opus).
 - Opus multiplier: x1.5 / x2 / x3 based on Opus difficulty (biome mismatch = higher difficulty = higher multiplier).
 - Permanent unlocks: new biomes, starting bonuses, expanded building pools, cosmetic styles.
+- **In-run trading:** Trader building (special building group) accepts surplus resources → converts to meta-currency during the run. Exchange rate has inflation — the more you trade the same resource, the worse the rate becomes. Satisfactory-ticket model.
 
 **Acceptance criteria:**
 - AC1: Run-end screen shows earned currencies with Opus multiplier applied
@@ -285,6 +314,8 @@ Between-run progression: currencies earned from runs, permanent unlocks, and dif
 - AC3: Unlocked content persists across runs
 - AC4: Opus multiplier is determined by biome-opus difficulty match
 - AC5: Player can view total lifetime currency earnings and spending
+- AC6: Trader building converts surplus resources to meta-currency during a run
+- AC7: Trading the same resource repeatedly yields diminishing returns (inflation)
 
 **Non-goals:**
 - Pay-to-win or real-money currencies
