@@ -7,13 +7,13 @@ features:
     scores:
       bdd:
         score: 8
-        at: "2026-03-01T17:06:14.554882679+03:00"
+        at: "0001-01-01T00:00:00Z"
       prd:
         score: 9
-        at: "2026-02-28T17:39:24.916752723+03:00"
+        at: "0001-01-01T00:00:00Z"
       seed:
         score: 8
-        at: "2026-03-01T16:41:07.22683307+03:00"
+        at: "0001-01-01T00:00:00Z"
   creatures:
     stage: bdd
     hashes:
@@ -22,13 +22,15 @@ features:
     scores:
       bdd:
         score: 8
-        at: "2026-03-01T17:06:16.124296573+03:00"
+        at: "0001-01-01T00:00:00Z"
       prd:
         score: 9
-        at: "2026-02-28T17:39:26.472794255+03:00"
+        at: "0001-01-01T00:00:00Z"
       seed:
         score: 8
-        at: "2026-03-01T16:41:07.229352748+03:00"
+        at: "0001-01-01T00:00:00Z"
+    tests:
+      - .ptsd/bdd/creatures/creatures.feature::spike/src/tests/creatures_bdd.rs
   energy:
     stage: bdd
     hashes:
@@ -37,13 +39,15 @@ features:
     scores:
       bdd:
         score: 8
-        at: "2026-03-01T17:06:17.702909883+03:00"
+        at: "0001-01-01T00:00:00Z"
       prd:
         score: 9
-        at: "2026-02-28T17:39:28.068605827+03:00"
+        at: "0001-01-01T00:00:00Z"
       seed:
         score: 8
-        at: "2026-03-01T16:41:07.227556317+03:00"
+        at: "0001-01-01T00:00:00Z"
+    tests:
+      - .ptsd/bdd/energy/energy.feature::spike/src/tests/energy_bdd.rs
   meta:
     stage: bdd
     hashes:
@@ -52,13 +56,15 @@ features:
     scores:
       bdd:
         score: 8
-        at: "2026-03-01T17:06:17.324600815+03:00"
+        at: "0001-01-01T00:00:00Z"
       prd:
         score: 8
-        at: "2026-02-28T17:39:27.557194974+03:00"
+        at: "0001-01-01T00:00:00Z"
       seed:
         score: 8
-        at: "2026-03-01T16:41:07.230556791+03:00"
+        at: "0001-01-01T00:00:00Z"
+    tests:
+      - .ptsd/bdd/meta/meta.feature::spike/src/tests/meta_bdd.rs
   progression:
     stage: bdd
     hashes:
@@ -67,13 +73,15 @@ features:
     scores:
       bdd:
         score: 8
-        at: "2026-03-01T17:06:16.677922097+03:00"
+        at: "0001-01-01T00:00:00Z"
       prd:
         score: 9
-        at: "2026-02-28T17:39:27.012051854+03:00"
+        at: "0001-01-01T00:00:00Z"
       seed:
         score: 8
-        at: "2026-03-01T16:41:07.229923625+03:00"
+        at: "0001-01-01T00:00:00Z"
+    tests:
+      - .ptsd/bdd/progression/progression.feature::spike/src/tests/progression_bdd.rs
   transport:
     stage: bdd
     hashes:
@@ -82,13 +90,13 @@ features:
     scores:
       bdd:
         score: 7
-        at: "2026-03-01T17:06:15.121572043+03:00"
+        at: "0001-01-01T00:00:00Z"
       prd:
         score: 9
-        at: "2026-02-28T17:39:25.479418913+03:00"
+        at: "0001-01-01T00:00:00Z"
       seed:
         score: 8
-        at: "2026-03-01T16:41:07.228732156+03:00"
+        at: "0001-01-01T00:00:00Z"
   ux:
     stage: bdd
     hashes:
@@ -97,13 +105,13 @@ features:
     scores:
       bdd:
         score: 7
-        at: "2026-03-01T17:06:18.186450599+03:00"
+        at: "0001-01-01T00:00:00Z"
       prd:
         score: 8
-        at: "2026-02-28T17:39:28.61917646+03:00"
+        at: "0001-01-01T00:00:00Z"
       seed:
         score: 8
-        at: "2026-03-01T16:41:07.231112259+03:00"
+        at: "0001-01-01T00:00:00Z"
   world:
     stage: bdd
     hashes:
@@ -112,10 +120,10 @@ features:
     scores:
       bdd:
         score: 9
-        at: "2026-03-01T17:06:15.612793316+03:00"
+        at: "0001-01-01T00:00:00Z"
       prd:
         score: 8
-        at: "2026-02-28T17:39:25.973439011+03:00"
+        at: "0001-01-01T00:00:00Z"
       seed:
         score: 8
-        at: "2026-03-01T16:41:07.228156811+03:00"
+        at: "0001-01-01T00:00:00Z"

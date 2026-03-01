@@ -3,7 +3,7 @@ project:
 
 testing:
   patterns:
-    files: ["**/*_test.go"]
+    files: ["**/*_test.go", "spike/src/tests/**/*.rs", "spike/src/tests/*.rs", "magnum_opus/src/tests/**/*.rs", "magnum_opus/src/tests/*.rs"]
 
 review:
   min_score: 7

@@ -29,6 +29,15 @@
             "command": "/home/veschin/ai/game/.claude/hooks/ptsd-gate.sh"
           }
         ]
+      },
+      {
+        "matcher": "Read",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/veschin/ai/game/.claude/hooks/check-file-size.sh"
+          }
+        ]
       }
     ],
     "PostToolUse": [
