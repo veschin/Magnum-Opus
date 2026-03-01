@@ -10,6 +10,7 @@
 //! Minion carry: range=5, rate=0.5
 
 use bevy::prelude::*;
+use bevy::ecs::message::Messages;
 
 use crate::components::*;
 use crate::events::*;
@@ -48,6 +49,8 @@ fn spawn_group(
 }
 
 /// Build a TransportPath entity with a PathConnection and PathSegmentTile entities.
+/// resource_filter is derived from the source_group's TransportSender resource field,
+/// so the transport_movement_system can match receiver demand by resource type.
 fn spawn_path(
     world: &mut World,
     kind: TransportKind,
@@ -60,11 +63,16 @@ fn spawn_path(
         TransportKind::RunePath => TierStats::for_path(tier),
         TransportKind::Pipe => TierStats::for_pipe(tier),
     };
+    // Derive resource_filter from the source group's TransportSender so the
+    // movement system can look up receiver demand by matching resource type.
+    let resource_filter = world.entity(source_group)
+        .get::<TransportSender>()
+        .and_then(|s| s.resource);
     let path_entity = world.spawn(TransportPath {
         kind,
         source_group,
         target_group,
-        resource_filter: None,
+        resource_filter,
         tier,
         capacity: stats.capacity,
         speed: stats.speed,
@@ -137,6 +145,13 @@ fn draw_rune_path_between_two_groups() {
     // Assert: last result is Ok
     let result = app.world().resource::<LastDrawPathResult>().result;
     assert_eq!(result, Some(DrawPathResult::Ok));
+
+    // Assert: PathConnected event was emitted (BDD: "Then a PathConnected event is emitted")
+    let connected_msgs = app.world().get_resource::<Messages<PathConnected>>().unwrap();
+    let connected_events: Vec<_> = connected_msgs.iter_current_update_messages().collect();
+    assert_eq!(connected_events.len(), 1, "PathConnected event should be emitted");
+    assert_eq!(connected_events[0].source_group, src_group);
+    assert_eq!(connected_events[0].target_group, dst_group);
 }
 
 /// Scenario: Draw pipe between two groups for liquid resource
@@ -910,6 +925,13 @@ fn destroying_middle_segment_stops_resource_flow() {
     let manifold = app.world_mut().query::<&Manifold>().get(app.world(), src_group).unwrap();
     let iron = manifold.resources.get(&ResourceType::IronOre).copied().unwrap_or(0.0);
     assert_eq!(iron, 5.0, "5 iron_ore should remain in group A after disconnection");
+
+    // Assert: PathDisconnected event was emitted (BDD: "Then a PathDisconnected event is emitted")
+    let disconnected_msgs = app.world().get_resource::<Messages<PathDisconnected>>().unwrap();
+    let disconnected_events: Vec<_> = disconnected_msgs.iter_current_update_messages().collect();
+    assert_eq!(disconnected_events.len(), 1, "PathDisconnected event should be emitted");
+    assert_eq!(disconnected_events[0].source_group, src_group);
+    assert_eq!(disconnected_events[0].target_group, dst_group);
 }
 
 /// Scenario: Cargo in transit is lost when path segment is destroyed
@@ -1403,4 +1425,249 @@ fn minion_carry_uses_manhattan_nearest_to_find_destination() {
 
     assert_eq!(b_received, 0.5, "nearest group B should receive 0.5 via minion carry");
     assert_eq!(c_received, 0.0, "farther group C should receive nothing (only nearest)");
+}
+
+// ── Missing BDD scenarios ─────────────────────────────────────────────────────
+
+/// Scenario: Minions only carry surplus resources the source group does not need
+///
+/// BDD: Given group A has iron_ore in manifold
+///      Given group A contains an iron_smelter that consumes iron_ore
+///      Given group B is within range 5 and needs iron_ore
+///      When 1 simulation tick runs
+///      Then no iron_ore is transferred to group B because group A uses it internally
+///
+/// The transport system only transfers resources that are available (amount > 0).
+/// When the source group consumes all its iron_ore internally (manifold = 0),
+/// no surplus exists for minion carry.
+#[test]
+fn minions_only_carry_surplus_resources_source_group_does_not_need() {
+    let mut app = test_app(12, 10);
+    app.world_mut().resource_mut::<TransportTierState>().transport_tier = 1;
+
+    // Group A at [2,5]: has TransportSender for iron_ore but manifold is empty
+    // (simulates all iron_ore consumed internally by a smelter in the group)
+    let src_group = spawn_group(app.world_mut(), 2, 5,
+        Some(ResourceType::IronOre), None, 0);
+    // Group B at [5,5]: manhattan distance 3, within range 5, needs iron_ore
+    let dst_group = spawn_group(app.world_mut(), 5, 5,
+        None, Some(ResourceType::IronOre), 1);
+
+    // Group A manifold has 0 iron_ore — all consumed internally by the group's smelter
+    // (manifold starts at 0 by default; no iron_ore available for export)
+
+    // No paths — minion carry should activate but find nothing to transfer
+    app.update();
+
+    let dst_manifold = app.world_mut().query::<&Manifold>().get(app.world(), dst_group).unwrap();
+    let transferred = dst_manifold.resources.get(&ResourceType::IronOre).copied().unwrap_or(0.0);
+    assert_eq!(transferred, 0.0,
+        "no iron_ore should transfer when source group has none available (all used internally)");
+
+    let src_manifold = app.world_mut().query::<&Manifold>().get(app.world(), src_group).unwrap();
+    let remaining = src_manifold.resources.get(&ResourceType::IronOre).copied().unwrap_or(0.0);
+    assert_eq!(remaining, 0.0, "source manifold should remain at 0 (all consumed internally)");
+}
+
+/// Scenario: Hazard destroys path segment crossing hazard zone
+///
+/// BDD: Given a rune_path from group A to group B crossing hazard zone tiles
+///      Given an eruption hazard zone centered at [7,5] with radius 2
+///      When SimClock reaches tick 100 and hazard fires
+///      Then path segments within the eruption zone are destroyed
+///      Then a PathDisconnected event is emitted
+///      Then resources stop flowing through the path
+///
+/// The hazard effect is simulated by issuing destroy_segment commands for tiles
+/// within the eruption zone radius (this is what the world hazard system would do).
+#[test]
+fn hazard_destroys_path_segment_crossing_hazard_zone() {
+    let mut app = test_app(16, 10);
+    app.world_mut().resource_mut::<TransportTierState>().transport_tier = 1;
+
+    let src_group = spawn_group(app.world_mut(), 2, 5,
+        Some(ResourceType::IronOre), None, 0);
+    let dst_group = spawn_group(app.world_mut(), 12, 5,
+        None, Some(ResourceType::IronOre), 2);
+
+    // Path from A to B crosses [7,5] which is inside eruption zone center=[7,5] radius=2
+    let waypoints = vec![(4,5),(5,5),(6,5),(7,5),(8,5),(9,5),(10,5),(11,5)];
+    let path_entity = spawn_path(app.world_mut(), TransportKind::RunePath, src_group, dst_group, waypoints, 1);
+
+    // Seed source with iron_ore to confirm flow stops after segment destruction
+    {
+        let mut manifold = app.world_mut().query::<&mut Manifold>().get_mut(app.world_mut(), src_group).unwrap();
+        *manifold.resources.entry(ResourceType::IronOre).or_default() = 5.0;
+    }
+
+    // Simulate hazard firing: destroy segment at [7,5] (inside eruption zone center=[7,5] radius=2)
+    app.world_mut().resource_mut::<TransportCommands>().destroy_segment.push((7, 5));
+
+    app.update();
+
+    // Path should be disconnected — segment in hazard zone was destroyed
+    let path = app.world().entity(path_entity).get::<TransportPath>().unwrap();
+    assert!(!path.connected,
+        "path should be disconnected after hazard destroys segment at [7,5]");
+
+    // PathDisconnected event should be emitted
+    let disconnected_msgs = app.world().get_resource::<Messages<PathDisconnected>>().unwrap();
+    let disconnected_events: Vec<_> = disconnected_msgs.iter_current_update_messages().collect();
+    assert_eq!(disconnected_events.len(), 1,
+        "PathDisconnected event should be emitted when hazard destroys path segment");
+    assert_eq!(disconnected_events[0].source_group, src_group);
+    assert_eq!(disconnected_events[0].target_group, dst_group);
+
+    // Resources should stop flowing — no cargo launched on disconnected path
+    let mut q = app.world_mut().query::<&Cargo>();
+    assert_eq!(q.iter(app.world()).count(), 0,
+        "no Cargo should be launched after hazard disconnects the path");
+
+    // Iron ore remains in source (not transported)
+    let manifold = app.world_mut().query::<&Manifold>().get(app.world(), src_group).unwrap();
+    let iron = manifold.resources.get(&ResourceType::IronOre).copied().unwrap_or(0.0);
+    assert_eq!(iron, 5.0, "iron_ore should remain in source after path disconnection by hazard");
+}
+
+/// Scenario: Disconnected path shows warning on both ends
+///
+/// BDD: Given a rune_path from group A to group B
+///      When path segment at [6,5] is destroyed
+///      Then a PathDisconnected event is emitted with fromGroup A and toGroup B
+///      Then group A output sender shows disconnected warning state
+///      Then group B input receiver shows disconnected warning state
+#[test]
+fn disconnected_path_shows_warning_on_both_ends() {
+    let mut app = test_app(16, 10);
+    app.world_mut().resource_mut::<TransportTierState>().transport_tier = 1;
+
+    let src_group = spawn_group(app.world_mut(), 2, 5,
+        Some(ResourceType::IronOre), None, 0);
+    let dst_group = spawn_group(app.world_mut(), 10, 5,
+        None, Some(ResourceType::IronOre), 2);
+
+    let waypoints = vec![(4,5),(5,5),(6,5),(7,5),(8,5),(9,5)];
+    let path_entity = spawn_path(app.world_mut(), TransportKind::RunePath, src_group, dst_group, waypoints, 1);
+
+    // Verify both ends start as connected (not disconnected)
+    {
+        let sender = app.world().entity(src_group).get::<TransportSender>().unwrap();
+        assert!(!sender.disconnected, "sender should start as connected");
+        let receiver = app.world().entity(dst_group).get::<TransportReceiver>().unwrap();
+        assert!(!receiver.disconnected, "receiver should start as connected");
+    }
+
+    // Destroy middle segment at [6,5]
+    app.world_mut().resource_mut::<TransportCommands>().destroy_segment.push((6, 5));
+
+    app.update();
+
+    // PathDisconnected event should be emitted with correct group references
+    let disconnected_msgs = app.world().get_resource::<Messages<PathDisconnected>>().unwrap();
+    let disconnected_events: Vec<_> = disconnected_msgs.iter_current_update_messages().collect();
+    assert_eq!(disconnected_events.len(), 1,
+        "one PathDisconnected event should be emitted");
+    assert_eq!(disconnected_events[0].source_group, src_group,
+        "PathDisconnected.source_group should be group A");
+    assert_eq!(disconnected_events[0].target_group, dst_group,
+        "PathDisconnected.target_group should be group B");
+
+    // Group A output sender should show disconnected warning
+    let sender = app.world().entity(src_group).get::<TransportSender>().unwrap();
+    assert!(sender.disconnected,
+        "group A output sender should show disconnected warning after segment destroyed");
+
+    // Group B input receiver should show disconnected warning
+    let receiver = app.world().entity(dst_group).get::<TransportReceiver>().unwrap();
+    assert!(receiver.disconnected,
+        "group B input receiver should show disconnected warning after segment destroyed");
+
+    // Path itself should also be marked disconnected
+    let path = app.world().entity(path_entity).get::<TransportPath>().unwrap();
+    assert!(!path.connected, "path.connected should be false after segment destruction");
+}
+
+/// Scenario: Multi-path network delivers resources through chain A→B→C
+///
+/// BDD: Given a rune_path from group A (miners) to group B (smelter)
+///      Given a rune_path from group B (smelter) to group C (constructor)
+///      Given group A manifold contains 2 iron_ore
+///      When enough simulation ticks run for cargo to traverse path A-to-B
+///      Then iron_ore is delivered to group B manifold
+///      When group B manifold has iron_bar (simulated processing)
+///      Then iron_bar appears in group B manifold
+///      When enough simulation ticks run for cargo to traverse path B-to-C
+///      Then iron_bar is delivered to group C manifold
+///
+/// Path A→B: 5 waypoints [[5,5]..[9,5]], T1 speed=1.0, length=5
+/// Cargo starts at position=1.0, needs 4 more ticks to reach position≥5
+/// Total 5 ticks to traverse A→B path, then 4 more for B→C path (4 waypoints).
+#[test]
+fn multi_path_network_delivers_resources_through_chain() {
+    let mut app = test_app(20, 10);
+    app.world_mut().resource_mut::<TransportTierState>().transport_tier = 1;
+
+    // Group A: iron miners at [2,5], sender for iron_ore
+    let group_a = spawn_group(app.world_mut(), 2, 5,
+        Some(ResourceType::IronOre), None, 0);
+    // Group B: iron smelter at [10,5], receives iron_ore, sends iron_bar
+    let group_b = {
+        let mut e = app.world_mut().spawn((
+            Group,
+            Manifold::default(),
+            GroupEnergy::default(),
+            GroupPosition { x: 10, y: 5 },
+        ));
+        e.insert(TransportReceiver { resource: Some(ResourceType::IronOre), demand: 2, disconnected: false });
+        e.insert(TransportSender { resource: Some(ResourceType::IronBar), disconnected: false });
+        e.id()
+    };
+    // Group C: constructor at [16,5], receives iron_bar
+    let group_c = spawn_group(app.world_mut(), 16, 5,
+        None, Some(ResourceType::IronBar), 2);
+
+    // Path A→B: waypoints [[5,5],[6,5],[7,5],[8,5],[9,5]] — 5 segments, T1 speed=1.0
+    let path_ab = spawn_path(app.world_mut(), TransportKind::RunePath, group_a, group_b,
+        vec![(5,5),(6,5),(7,5),(8,5),(9,5)], 1);
+
+    // Path B→C: waypoints [[12,5],[13,5],[14,5],[15,5]] — 4 segments, T1 speed=1.0
+    let path_bc = spawn_path(app.world_mut(), TransportKind::RunePath, group_b, group_c,
+        vec![(12,5),(13,5),(14,5),(15,5)], 1);
+
+    // Seed group A with 2 iron_ore
+    {
+        let mut manifold = app.world_mut().query::<&mut Manifold>().get_mut(app.world_mut(), group_a).unwrap();
+        *manifold.resources.entry(ResourceType::IronOre).or_default() = 2.0;
+    }
+
+    // Run 5 ticks — cargo spawned on tick 1 at position 1.0, advances 1.0/tick
+    // After 5 ticks: cargo position = 5.0 which reaches path length 5 → delivery on tick 5
+    for _ in 0..5 {
+        app.update();
+    }
+
+    // iron_ore should be delivered to group B manifold
+    let manifold_b = app.world_mut().query::<&Manifold>().get(app.world(), group_b).unwrap();
+    let iron_ore_in_b = manifold_b.resources.get(&ResourceType::IronOre).copied().unwrap_or(0.0);
+    assert!(iron_ore_in_b > 0.0,
+        "iron_ore should be delivered to group B manifold after traversing path A→B");
+
+    // Simulate group B processing iron_ore into iron_bar (production phase)
+    {
+        let mut manifold = app.world_mut().query::<&mut Manifold>().get_mut(app.world_mut(), group_b).unwrap();
+        manifold.resources.remove(&ResourceType::IronOre);
+        *manifold.resources.entry(ResourceType::IronBar).or_default() = 2.0;
+    }
+
+    // Run 4 more ticks — cargo spawned on first of these ticks at position 1.0,
+    // path B→C length=4, after 4 ticks cargo reaches position 4.0 → delivery
+    for _ in 0..4 {
+        app.update();
+    }
+
+    // iron_bar should be delivered to group C manifold
+    let manifold_c = app.world_mut().query::<&Manifold>().get(app.world(), group_c).unwrap();
+    let iron_bar_in_c = manifold_c.resources.get(&ResourceType::IronBar).copied().unwrap_or(0.0);
+    assert!(iron_bar_in_c > 0.0,
+        "iron_bar should be delivered to group C manifold after traversing path B→C");
 }

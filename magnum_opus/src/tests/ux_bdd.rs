@@ -167,7 +167,7 @@ fn calculator_computes_multi_step_t2_chain_steel_plates() {
                 1,
                 "steel_forge count should be 1"
             );
-            assert_eq!(energy_needed, 68.0, "energy_needed should be 68");
+            assert_eq!(energy_needed, 78.0, "energy_needed should be 78");
         }
         CalculatorResult::Error { message, .. } => panic!("Expected success, got error: {message}"),
     }

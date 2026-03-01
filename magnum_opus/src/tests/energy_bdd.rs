@@ -462,138 +462,96 @@ fn high_priority_group_gets_energy_first_during_deficit() {
 /// Scenario: Three priority tiers distribute energy in order high then medium then low
 ///
 /// Setup: 20x10 grid.
-///   Group A: StoneQuarry(4) at [2,3] — HIGH, demand=4
-///   Group B: WaterPump(3) at [8,3] — MEDIUM, demand=3
-///   Group C: Watchtower(2) at [14,3] — LOW, demand=2
-///   Generator: WindTurbine(20) at [18,3] — isolated
-///   Total demand=9, gen=20 → surplus; but testing priority ordering under partial deficit:
-///   We set gen to exactly 15 via EnergyPool injection after all buildings are placed.
-///   Then: HIGH(4) → full=4 remaining=11; MED(3) → full=3 remaining=8; LOW(2) → full=2
-///   With gen=20 everyone gets fully served. For deficit we need gen < total_demand.
-///   Use: gen=5, demand A=10(stone_quarry has 4, so no), use legacy groups.
-///
-/// Implementation note: this test uses real building placement.
-///   Gen=20 (one turbine), demands: A=StoneQuarry(4), B=WaterPump(3), C=Watchtower(2).
-///   Total demand=9 < gen=20 → all get fully served (not a real deficit test).
-///   For a true 3-tier deficit we need total demand > gen.
-///   Use 2x StoneQuarry(4+4=8) for A, 2x WaterPump(3+3=6) for B, 2x Watchtower(2+2=4) for C.
-///   Total=18 > gen=15. Set gen to 15 by injecting EnergyPool directly after placement.
-///   This approach avoids manually spawned groups being despawned.
+///   Group A: StoneQuarry(4)+Sawmill(6) adjacent → demand=10, HIGH
+///   Group B: IronMiner(5)+IronSmelter(10) adjacent → demand=15, but need demand=10
+///     Use StoneQuarry(4)+Sawmill(6) at [8,3]-[9,3] → demand=10, MEDIUM
+///   Group C: CopperMiner(5)+CopperSmelter(10) adjacent → demand=15, but need demand=10
+///     Use StoneQuarry(4)+Sawmill(6) at [14,3]-[15,3] → demand=10, LOW
+///   Generator: WindTurbine(20) at [19,3] → gen=20
+///   Total demand=30 > gen=20 → deficit
+///   Expected: HIGH(10) → full 10 (remaining=10), MED(10) → full 10 (remaining=0), LOW(10) → 0
 #[test]
 fn three_priority_tiers_distribute_energy_in_order_high_then_medium_then_low() {
     let mut app = test_app(20, 10);
 
-    // Group A: two StoneQuarry buildings isolated at [1,3] and [1,4] → demand=8
+    // Group A: StoneQuarry(4)+Sawmill(6) adjacent at [1,3]-[2,3] → demand=10, HIGH
     set_terrain(&mut app, 1, 3, TerrainType::StoneDeposit);
-    set_terrain(&mut app, 1, 4, TerrainType::StoneDeposit);
     place(&mut app, BuildingType::StoneQuarry, 1, 3);
-    place(&mut app, BuildingType::StoneQuarry, 1, 4);
+    place(&mut app, BuildingType::Sawmill, 2, 3);
 
-    // Group B: two WaterPump buildings isolated at [7,3] and [7,4] → demand=6
-    set_terrain(&mut app, 7, 3, TerrainType::WaterSource);
-    set_terrain(&mut app, 7, 4, TerrainType::WaterSource);
-    place(&mut app, BuildingType::WaterPump, 7, 3);
-    place(&mut app, BuildingType::WaterPump, 7, 4);
+    // Group B: StoneQuarry(4)+Sawmill(6) adjacent at [8,3]-[9,3] → demand=10, MEDIUM
+    set_terrain(&mut app, 8, 3, TerrainType::StoneDeposit);
+    place(&mut app, BuildingType::StoneQuarry, 8, 3);
+    place(&mut app, BuildingType::Sawmill, 9, 3);
 
-    // Group C: two Watchtower buildings isolated at [13,3] and [13,4] → demand=4
-    place(&mut app, BuildingType::Watchtower, 13, 3);
-    place(&mut app, BuildingType::Watchtower, 13, 4);
+    // Group C: StoneQuarry(4)+Sawmill(6) adjacent at [14,3]-[15,3] → demand=10, LOW
+    set_terrain(&mut app, 14, 3, TerrainType::StoneDeposit);
+    place(&mut app, BuildingType::StoneQuarry, 14, 3);
+    place(&mut app, BuildingType::Sawmill, 15, 3);
 
-    // Generator: WindTurbine isolated at [18,3] → gen=20
-    place(&mut app, BuildingType::WindTurbine, 18, 3);
+    // Generator: WindTurbine isolated at [19,3] → gen=20
+    place(&mut app, BuildingType::WindTurbine, 19, 3);
 
     app.update();
 
-    // Locate groups
+    // Locate groups by their StoneQuarry position
     let group_a = group_at(&mut app, 1, 3);
-    let group_b = group_at(&mut app, 7, 3);
-    let group_c = group_at(&mut app, 13, 3);
+    let group_b = group_at(&mut app, 8, 3);
+    let group_c = group_at(&mut app, 14, 3);
 
     // Set priorities: A=HIGH, B=MEDIUM, C=LOW
     set_energy_priority(&mut app, group_a, EnergyPriority::High);
     set_energy_priority(&mut app, group_b, EnergyPriority::Medium);
     set_energy_priority(&mut app, group_c, EnergyPriority::Low);
 
-    // Override gen to 15 to create a deficit (total demand = 8+6+4 = 18 > 15)
-    // by injecting through EnergyPool directly (implementation will recompute next tick,
-    // so we set it just before tick then immediately check)
-    // Actually we cannot fake gen mid-tick. Instead accept gen=20 and adjust demands by
-    // using buildings that match the scenario. With gen=20 and total_demand=18, all groups
-    // are fully served (no deficit). To create deficit use gen=15 by removing turbine and
-    // placing 15x EnergySource (gen=1.0 each) — but that requires 15 placements.
-    //
-    // Simpler: directly inject the EnergyPool.total_generation=15 and run energy_system
-    // manually. But the system recomputes from buildings each tick.
-    //
-    // Accept this limitation: with gen=20 > demand=18, all groups get fully served.
-    // The test verifies the PRIORITY MECHANISM when there IS a deficit by manually
-    // adjusting total generation after buildings are placed. Since energy_system
-    // recalculates from buildings on every tick, we must accept what the buildings give us.
-    //
-    // The scenario as written (gen=20, demand=18) tests surplus — all groups get full demand.
-    // To test true three-tier deficit priority (HIGH full, MEDIUM partial, LOW starved):
-    // We need total demand > gen. Use additional consumers.
-    // Add another isolated iron_smelter group (demand=10) at [18,7] — far from turbine.
-    // Now total demand = 8+6+4+10 = 28 > gen=20.
-    // HIGH group A: demand=8 → full 8 (remaining=12)
-    // MEDIUM group B: demand=6 → full 6 (remaining=6)
-    // LOW group C: demand=4 → partial? remaining=6 >= 4, so full 4 (remaining=2)
-    // LOW extra: demand=10 → gets 2 only.
-    // That still gives C its full demand. Need gen < 14 (sum of A+B).
-    // Use gen from turbine (20) and demand: A=10 (use IronMiner pair), B=10, C=10.
-    // 20 gen, 30 demand. HIGH(10) → 10 remaining=10. MED(10) → 10 remaining=0. LOW → 0.
-    // That matches the scenario exactly.
-    //
-    // Restructure: use IronMiner(5)+IronSmelter(10) = 15 demand per group would work but
-    // they'd form one group. Use isolated pairs instead.
-    // IronMiner(5) isolated at [1,3], IronMiner(5) isolated at [1,5] = two groups at [1,3] and [1,5]
-    // But copper mines don't exist at those positions.
-    //
-    // This test restructuring is complex. The simplest approach that correctly tests the
-    // three-tier invariant is to use the energy_system directly (not via app.update) or
-    // to inject demands via a post-placement hook. Since neither is clean, we accept that
-    // this test tests the LOGIC of the allocation algorithm using the actual buildings
-    // available in the ECS, asserting on what the current impl does given gen=20 demand=18:
-    // all three groups fully served (no deficit), all allocated == demand.
-
     app.update();
 
+    // gen=20, total demand=30 (deficit)
     let pool = app.world().resource::<EnergyPool>();
     assert_eq!(pool.total_generation, 20.0, "gen=20 from turbine");
-    assert_eq!(pool.total_consumption, 18.0, "total demand: 8+6+4=18");
+    assert_eq!(pool.total_consumption, 30.0, "total demand: 10+10+10=30");
 
     let ge_a = group_energy(&mut app, group_a);
     let ge_b = group_energy(&mut app, group_b);
     let ge_c = group_energy(&mut app, group_c);
 
-    // With gen=20 > demand=18: HIGH(8) → 8, MED(6) → 6, LOW(4) → 4 (no deficit)
-    // For true three-tier deficit test: assert expected allocation ordering is correct.
-    // HIGH is served first (fully), then MED, then LOW.
+    // Verify demands
     assert!(
-        ge_a.allocated <= ge_a.demand,
-        "group A allocated ({}) <= demand ({})",
-        ge_a.allocated, ge_a.demand
+        (ge_a.demand - 10.0).abs() < 0.01,
+        "group A demand=10, got {}",
+        ge_a.demand
     );
     assert!(
-        ge_b.allocated <= ge_b.demand,
-        "group B allocated ({}) <= demand ({})",
-        ge_b.allocated, ge_b.demand
+        (ge_b.demand - 10.0).abs() < 0.01,
+        "group B demand=10, got {}",
+        ge_b.demand
     );
     assert!(
-        ge_c.allocated <= ge_c.demand,
-        "group C allocated ({}) <= demand ({})",
-        ge_c.allocated, ge_c.demand
+        (ge_c.demand - 10.0).abs() < 0.01,
+        "group C demand=10, got {}",
+        ge_c.demand
     );
-    // In surplus (gen > demand): all groups get full demand
-    assert_eq!(ge_a.allocated, ge_a.demand, "group A (HIGH) fully served in surplus");
-    assert_eq!(ge_b.allocated, ge_b.demand, "group B (MED) fully served in surplus");
-    assert_eq!(ge_c.allocated, ge_c.demand, "group C (LOW) fully served in surplus");
 
-    // True deficit assertion: when gen < demand, HIGH is served before MED before LOW.
-    // This is enforced by the energy_system priority loop (HIGH→MEDIUM→LOW).
-    // The following asserts priority ordering holds (would be violated if impl is wrong):
-    // If gen were 15 (< 18): A=8 (full), B=6 (full, remaining=1), C=1 (partial)
-    // We assert the ordering invariant directly on the algorithm's structure:
+    // HIGH(10) gets full 10, remaining=10
+    assert!(
+        (ge_a.allocated - 10.0).abs() < 0.01,
+        "group A (HIGH) receives 10 (full demand), got {}",
+        ge_a.allocated
+    );
+    // MED(10) gets full 10, remaining=0
+    assert!(
+        (ge_b.allocated - 10.0).abs() < 0.01,
+        "group B (MED) receives 5 (partial), got {}",
+        ge_b.allocated
+    );
+    // LOW(10) gets 0 (starved)
+    assert!(
+        ge_c.allocated < 0.01,
+        "group C (LOW) receives 0 (starved), got {}",
+        ge_c.allocated
+    );
+
+    // Priority ordering is correct
     assert!(
         ge_a.priority == EnergyPriority::High,
         "group A has HIGH priority"
@@ -885,22 +843,30 @@ fn mana_reactor_at_t3_generates_energy_while_consuming_fuel() {
     place(&mut app, BuildingType::ManaReactor, 4, 4);
     app.update();
 
-    // With fuel in manifold, mana_reactor generates 80
-    // For this test, we verify the energy is counted when placed
-    // (fuel recipe / manifold fuel check is a future implementation detail)
+    // Insert 1 mana_crystal into the group manifold (fuel for ManaReactor)
+    let group = group_at(&mut app, 4, 4);
+    {
+        let mut manifold = app.world_mut().get_mut::<Manifold>(group).expect("group has manifold");
+        manifold.resources.insert(ResourceType::ManaCrystal, 1.0);
+    }
+
+    // Run tick with fuel present: ManaReactor generates 80
+    app.update();
+
     let pool = app.world().resource::<EnergyPool>();
     assert!(
-        pool.total_generation >= 80.0,
-        "mana_reactor includes 80 gen, got {}",
+        (pool.total_generation - 80.0).abs() < 0.01,
+        "mana_reactor with fuel generates 80, got {}",
         pool.total_generation
     );
 
-    // Verify mana_reactor's group manifold begins consuming fuel recipe
-    let group = group_at(&mut app, 4, 4);
+    // Verify the group has a manifold (fuel tracking is active)
     let manifold = app.world().get::<Manifold>(group).expect("group has manifold");
-    // The manifold-based fuel consumption is tracked via the production system
-    // (implementation detail): presence of building in group is sufficient for now
-    let _ = manifold;
+    // ManaCrystal was inserted (fuel was present this tick)
+    assert!(
+        manifold.resources.contains_key(&ResourceType::ManaCrystal),
+        "mana_reactor group manifold tracks ManaCrystal fuel"
+    );
 }
 
 /// Scenario: Mana reactor without fuel does not generate energy
@@ -1494,25 +1460,31 @@ fn allocated_energy_is_never_negative_for_any_group() {
 fn even_with_zero_total_generation_all_allocated_values_are_zero_not_negative() {
     let mut app = test_app(10, 10);
 
-    let group_a = spawn_group_with_demand(&mut app, 15.0, EnergyPriority::High);
+    // Place an iron_miner (demand=5) with no energy buildings.
+    // energy_system will compute: total_gen=0, demand=5, allocated=0 → ratio=0.0.
+    set_terrain(&mut app, 3, 3, TerrainType::IronVein);
+    place(&mut app, BuildingType::IronMiner, 3, 3);
     // No energy buildings
     app.update();
 
-    // Re-set demand
-    app.world_mut().get_mut::<GroupEnergy>(group_a).unwrap().demand = 15.0;
+    let group_a = group_at(&mut app, 3, 3);
+    // Set HIGH priority (BDD says group A at priority high)
+    set_energy_priority(&mut app, group_a, EnergyPriority::High);
     app.update();
 
     let ge_a = group_energy(&mut app, group_a);
+    // total_gen=0 → allocated=0 for all groups
     assert_eq!(
         ge_a.allocated,
         0.0,
         "group A allocated=0 when gen=0, got {}",
         ge_a.allocated
     );
+    // ratio() = allocated/demand = 0/5 = 0.0 (speed modifier = 0.0)
     assert_eq!(
         ge_a.ratio(),
         0.0,
-        "group A speed modifier=0.0, got {}",
+        "group A speed modifier=0.0 when no generation, got {}",
         ge_a.ratio()
     );
 }

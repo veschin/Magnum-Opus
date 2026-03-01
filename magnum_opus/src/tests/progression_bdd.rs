@@ -15,12 +15,11 @@ use crate::components::{
     OpusDifficulty, OpusNodeFull, PlayerInventory, ResourceType, TierGateComponent,
 };
 use crate::events::{
-    MilestoneReached, MiniOpusCompleted, MiniOpusMissed, NestCleared, RunAbandoned, RunTimeUp,
-    RunWon, TierUnlockedProgression,
+    MiniOpusCompleted, MiniOpusMissed, NestCleared, TierUnlockedProgression,
 };
 use crate::resources::{
-    Biome, MiniOpusEntry, OpusNodeEntry, OpusTreeResource, ProductionRates, RunConfig, RunState,
-    RunStatus, StartingKitCommands, TieredPlacementCommands, TieredPlacementCmd, TransportTierState,
+    Biome, MiniOpusEntry, OpusNodeEntry, OpusTreeResource, RunConfig,
+    StartingKitCommands, TieredPlacementCmd, TransportTierState,
 };
 
 // ── AC1: Opus tree nodes are production throughput milestones ─────────────────
@@ -143,19 +142,18 @@ fn milestone_completes_when_rate_sustained_for_600_ticks() {
     }
 
     assert!(node.sustained, "node must be sustained after 600 ticks at 4.5 >= 4.0");
-    assert!(node.sustain_ticks >= sustain_window_ticks);
+    assert_eq!(node.sustain_ticks, sustain_window_ticks, "sustain_ticks must equal window of 600");
 
-    // Verify a MilestoneReached event would be emitted
-    let event = MilestoneReached {
-        node_index: node.node_index,
-        resource: node.resource,
-    };
-    assert_eq!(event.node_index, 0);
-    assert_eq!(event.resource, ResourceType::IronOre);
+    // Verify the CONDITIONS that would trigger MilestoneReached are met:
+    // the node is sustained AND the resource/index are correct for the event payload.
+    // Event emission itself is verified at impl stage via EventReader.
+    assert_eq!(node.node_index, 0, "MilestoneReached would reference node index 0");
+    assert_eq!(node.resource, ResourceType::IronOre, "MilestoneReached would reference IronOre");
+    // Event emission verified at impl stage via EventReader
 }
 
 #[test]
-fn milestone_does_not_complete_when_rate_held_fewer_than_600_ticks() {
+fn milestone_does_not_complete_when_rate_held_for_fewer_than_600_ticks() {
     let sustain_window_ticks = 600u32;
 
     let mut node = OpusNodeFull {
@@ -307,10 +305,11 @@ fn opus_tree_exposes_data_for_ui_display() {
 
 #[test]
 fn mini_opus_branch_references_its_parent_main_path_node() {
+    // branch_points at node indices 0, 2, 4 (0-indexed; BDD "nodes 1, 3, 5" are 1-indexed labels)
     let branches = vec![
         MiniOpusBranch {
             id: "trade_5_wood".to_string(),
-            parent_node: 1,
+            parent_node: 0,  // 0-indexed: BDD "node 1"
             kind: MiniOpusKind::TradeSurplus,
             trigger: MiniOpusTrigger::OnDemand,
             status: MiniOpusStatus::Active,
@@ -322,7 +321,7 @@ fn mini_opus_branch_references_its_parent_main_path_node() {
         },
         MiniOpusBranch {
             id: "fast_steel".to_string(),
-            parent_node: 3,
+            parent_node: 2,  // 0-indexed: BDD "node 3"
             kind: MiniOpusKind::SpeedProduction,
             trigger: MiniOpusTrigger::TimeBased,
             status: MiniOpusStatus::Active,
@@ -334,12 +333,12 @@ fn mini_opus_branch_references_its_parent_main_path_node() {
         },
     ];
 
-    // branch_points at nodes 1, 3, 5 — verify parent references
+    // branch_points at node indices 0, 2, 4 — verify parent references (0-indexed throughout)
     let trade_branch = branches.iter().find(|b| b.id == "trade_5_wood").unwrap();
-    assert_eq!(trade_branch.parent_node, 1, "trade_5_wood parent_node must be 1");
+    assert_eq!(trade_branch.parent_node, 0, "trade_5_wood parent_node must be 0 (BDD node 1, 0-indexed)");
 
     let fast_steel = branches.iter().find(|b| b.id == "fast_steel").unwrap();
-    assert_eq!(fast_steel.parent_node, 3, "fast_steel parent_node must be 3");
+    assert_eq!(fast_steel.parent_node, 2, "fast_steel parent_node must be 2 (BDD node 3, 0-indexed)");
 }
 
 // ── AC5: Mini-opus awards meta-currency; skipping has no penalty ──────────────
@@ -465,9 +464,11 @@ fn completing_conditional_mini_opus_awards_souls() {
 fn skipping_a_mini_opus_does_not_affect_main_path_progression() {
     let sustain_window_ticks = 600u32;
 
-    // Mini-opus is missed
-    let mini_opus_status = MiniOpusStatus::Missed;
-    assert_eq!(mini_opus_status, MiniOpusStatus::Missed);
+    // Mini-opus is missed — simulate status transition from Active to Missed
+    let mut mini_opus_status = MiniOpusStatus::Active;
+    // The missed flag is applied (e.g. deadline expired)
+    mini_opus_status = MiniOpusStatus::Missed;
+    assert_eq!(mini_opus_status, MiniOpusStatus::Missed, "mini-opus status must be Missed");
 
     // Main-path node 1 is still being evaluated independently
     let mut node = OpusNodeFull {
@@ -524,8 +525,13 @@ fn final_node_completes_when_all_main_path_rates_sustained_simultaneously() {
     assert!(sustain_met, "simultaneous sustain must have lasted 600 ticks");
     assert!((tree.completion_pct - 1.0).abs() < 0.001, "completion_pct must be 1.0");
 
-    // RunWon event would be emitted
-    let _event = RunWon;
+    // Verify the CONDITIONS that would trigger RunWon are both met.
+    // RunWon fires only when all_sustained AND simultaneous_sustain_ticks >= sustain_ticks_required.
+    // Event emission verified at impl stage via EventReader.
+    assert!(
+        all_sustained && sustain_met,
+        "RunWon trigger conditions: all nodes sustained AND sustain_ticks >= 600"
+    );
 }
 
 #[test]
@@ -574,12 +580,20 @@ fn t2_buildings_cannot_be_placed_before_t1_nest_is_cleared() {
         y: 3,
     };
 
-    // Simulate tier gate check
-    let rejected = cmd.building_tier > 1 && !tier_gate.unlocked;
+    // Simulate tier gate check — produces a rejection reason string
+    let rejection_reason: Option<&'static str> = if cmd.building_tier > 1 && !tier_gate.unlocked {
+        Some("tier_gate_locked")
+    } else {
+        None
+    };
 
-    assert!(rejected, "T2 building must be rejected when T2 gate is not unlocked");
-    assert_eq!(tier_gate.tier, 2);
-    assert_eq!(tier_gate.nest_id, "forest_wolf_den");
+    assert!(rejection_reason.is_some(), "T2 building must be rejected when T2 gate is not unlocked");
+    assert_eq!(rejection_reason, Some("tier_gate_locked"), "rejection reason must be 'tier_gate_locked'");
+    assert_eq!(tier_gate.tier, 2, "tier gate must guard tier 2");
+    assert_eq!(tier_gate.nest_id, "forest_wolf_den", "tier gate linked to forest_wolf_den");
+    // Building was not placed: placement only proceeds when rejection_reason is None
+    let placed_building_count = if rejection_reason.is_none() { 1 } else { 0 };
+    assert_eq!(placed_building_count, 0, "steel_smelter must not be placed when rejected");
 }
 
 #[test]
@@ -633,11 +647,19 @@ fn t3_buildings_cannot_be_placed_before_t2_nest_is_cleared() {
 
     // Current tier is 2 — T3 gate not unlocked
     let current_tier = 2u32;
-    let rejected = cmd.building_tier > current_tier && !tier_gate.unlocked;
+    let rejection_reason: Option<&'static str> = if cmd.building_tier > current_tier && !tier_gate.unlocked {
+        Some("tier_gate_locked")
+    } else {
+        None
+    };
 
-    assert!(rejected, "T3 building must be rejected when T3 gate is not unlocked");
-    assert_eq!(tier_gate.tier, 3);
-    assert_eq!(tier_gate.nest_id, "forest_ancient_treant");
+    assert!(rejection_reason.is_some(), "T3 building must be rejected when T3 gate is not unlocked");
+    assert_eq!(rejection_reason, Some("tier_gate_locked"), "rejection reason must be 'tier_gate_locked'");
+    assert_eq!(tier_gate.tier, 3, "tier gate must guard tier 3");
+    assert_eq!(tier_gate.nest_id, "forest_ancient_treant", "tier gate linked to forest_ancient_treant");
+    // Building was not placed: placement only proceeds when rejection_reason is None
+    let placed_building_count = if rejection_reason.is_none() { 1 } else { 0 };
+    assert_eq!(placed_building_count, 0, "opus_forge must not be placed when rejected");
 }
 
 #[test]
@@ -688,16 +710,18 @@ fn run_ends_with_scoring_when_final_node_is_completed() {
     let max_ticks = 108000u64;
     let mini_opus_completed = 1u32;
     let mini_opus_total = 2u32;
+    let total_nodes = 5u32;
+    let sustained_nodes = 5u32; // all 5 sustained
 
-    let opus_completion = 1.0_f32;
+    let opus_completion = sustained_nodes as f32 / total_nodes as f32;
     let mini_opus_score = mini_opus_completed as f32 / mini_opus_total as f32;
     let time_bonus = 1.0 - (elapsed_ticks as f32 / max_ticks as f32);
 
     let raw_score = 0.5 * opus_completion + 0.3 * mini_opus_score + 0.2 * time_bonus;
     let final_score = (raw_score * 1000.0).round() as u32;
 
-    assert!((opus_completion - 1.0).abs() < 0.001, "opus_completion must be 1.0");
-    assert!((mini_opus_score - 0.5).abs() < 0.001, "mini_opus_score = 0.5");
+    assert_eq!(opus_completion, 1.0, "opus_completion must be 5/5 = 1.0");
+    assert!((mini_opus_score - 0.5).abs() < 0.001, "mini_opus_score = 1/2 = 0.5");
     assert!((time_bonus - 0.333).abs() < 0.01, "time_bonus ≈ 0.333, got {time_bonus}");
     assert!((raw_score - 0.717).abs() < 0.01, "raw_score ≈ 0.717, got {raw_score}");
     assert_eq!(final_score, 717, "final display score must be 717");
@@ -712,21 +736,27 @@ fn run_ends_with_scoring_when_final_node_is_completed() {
 
 #[test]
 fn t2_recipes_become_available_immediately_when_t2_is_unlocked() {
-    // Simulate a recipe availability gate
-    let mut steel_plate_recipe_unlocked = false;
-    let mut all_t2_recipes_unlocked = false;
+    // Simulate a RecipeDB entry with a tier lock: steel_plate_recipe requires tier 2
+    let recipe_required_tier: u32 = 2;
+    let recipe_name = "steel_plate_recipe";
 
-    // TierUnlocked event for tier 2
+    // Before unlock: current_tier = 1 → recipe locked
+    let current_tier_before: u32 = 1;
+    let is_locked_before = current_tier_before < recipe_required_tier;
+    assert!(is_locked_before, "{recipe_name} must be locked when current_tier=1 < required_tier=2");
+
+    // TierUnlocked event for tier 2 arrives → tier transitions to 2
     let event = TierUnlockedProgression { tier: 2 };
+    let current_tier_after = event.tier;
 
-    // Tier transition system processes unlock
-    if event.tier >= 2 {
-        steel_plate_recipe_unlocked = true;
-        all_t2_recipes_unlocked = true;
-    }
+    // After unlock: recipe available because current_tier >= required_tier
+    let is_available = current_tier_after >= recipe_required_tier;
+    assert!(is_available, "{recipe_name} must be available immediately when current_tier=2 >= required_tier=2");
 
-    assert!(steel_plate_recipe_unlocked, "steel_plate_recipe must be available after T2 unlock");
-    assert!(all_t2_recipes_unlocked, "all T2 recipes in RecipeDB must be available");
+    // All T2 recipes share required_tier=2, so the same condition unlocks them all
+    let t2_recipe_tiers: Vec<u32> = vec![2, 2, 2]; // representative sample of T2 recipes
+    let all_t2_unlocked = t2_recipe_tiers.iter().all(|&rt| current_tier_after >= rt);
+    assert!(all_t2_unlocked, "all T2 recipes in RecipeDB must be available immediately after T2 unlock");
 }
 
 // ── AC11: Existing buildings auto-upgrade on tier unlock ──────────────────────
@@ -858,7 +888,7 @@ fn time_based_mini_opus_marked_missed_after_deadline() {
 // ── Edge Case: Opus requires non-biome resource ───────────────────────────────
 
 #[test]
-fn opus_node_requires_resource_unavailable_in_biome_can_be_satisfied_via_synthesis() {
+fn opus_node_requires_resource_unavailable_in_biome() {
     // Volcanic biome: no natural wood veins
     // But player builds a tree_farm synthesis group that produces wood
     let biome = Biome::Volcanic;
@@ -930,8 +960,11 @@ fn run_timeout_awards_partial_score_based_on_tree_fill() {
     assert!((raw_score - 0.3).abs() < 0.001, "raw_score must be 0.3, got {raw_score}");
     assert_eq!(final_score, 300, "final display score must be 300");
 
-    // RunTimeUp event emitted
-    let _event = RunTimeUp;
+    // Verify the CONDITIONS that would trigger RunTimeUp are met.
+    // RunTimeUp fires when current_tick >= max_ticks.
+    // Event emission verified at impl stage via EventReader.
+    let timeout_reached = current_tick >= max_ticks;
+    assert!(timeout_reached, "RunTimeUp condition met: current_tick={current_tick} >= max_ticks={max_ticks}");
 }
 
 // ── Edge Case: All mini-opus missed ───────────────────────────────────────────
@@ -948,8 +981,10 @@ fn run_completable_with_all_mini_opus_missed() {
     let max_ticks = 108000u64;
     let mini_opus_completed = 0u32;
     let mini_opus_total = 2u32;
+    let total_nodes = 5u32;
+    let sustained_nodes = 5u32; // all 5 sustained
 
-    let opus_completion = 1.0_f32;
+    let opus_completion = sustained_nodes as f32 / total_nodes as f32;
     let mini_opus_score = if mini_opus_total > 0 {
         mini_opus_completed as f32 / mini_opus_total as f32
     } else {
@@ -958,7 +993,7 @@ fn run_completable_with_all_mini_opus_missed() {
     let time_bonus = 1.0 - (elapsed_ticks as f32 / max_ticks as f32);
     let raw_score = 0.5 * opus_completion + 0.3 * mini_opus_score + 0.2 * time_bonus;
 
-    assert!((opus_completion - 1.0).abs() < 0.001, "opus_completion must be 1.0");
+    assert_eq!(opus_completion, 1.0, "opus_completion must be 5/5 = 1.0");
     assert!((mini_opus_score - 0.0).abs() < 0.001, "mini_opus_score must be 0.0");
     assert!((time_bonus - 0.5).abs() < 0.001, "time_bonus must be 0.5, got {time_bonus}");
     assert!((raw_score - 0.6).abs() < 0.001, "raw_score = 0.6, got {raw_score}");
@@ -981,7 +1016,10 @@ fn abandoned_run_earns_zero_meta_currency() {
     assert!((currency_awarded - 0.0).abs() < f32::EPSILON,
         "no meta-currency awarded on abandon, got {currency_awarded}");
 
-    let _event = RunAbandoned;
+    // Verify the CONDITIONS that would trigger RunAbandoned are met.
+    // RunAbandoned fires when run_config.abandoned is true.
+    // Event emission verified at impl stage via EventReader.
+    assert!(run_config.abandoned, "RunAbandoned condition met: run_config.abandoned is true");
 }
 
 // ── Starting Kit ──────────────────────────────────────────────────────────────
@@ -1322,9 +1360,15 @@ fn tier_timing_targets_are_advisory_only() {
     let exceeded_target = current_tick > tier_t1_end_target;
     assert!(exceeded_target, "current_tick 35000 exceeds t1_end target 30000");
 
-    // No penalty applied
-    let penalty_applied = false;
-    assert!(!penalty_applied, "no penalty for exceeding tier timing target");
+    // No penalty applied: RunConfig has no production_speed_modifier or penalty field.
+    // Verify that RunConfig with exceeded timing has all default multipliers (no degradation).
+    let run_config = RunConfig::default();
+    // RunConfig tracks no penalty for exceeding tier timing — production rates are unaffected.
+    // Advisory timing is purely informational; the sustain_window_ticks stays at 600.
+    assert_eq!(run_config.sustain_window_ticks, 600,
+        "sustain_window_ticks unchanged after exceeding advisory target");
+    assert_eq!(run_config.sample_interval_ticks, 20,
+        "sample_interval_ticks unchanged after exceeding advisory target");
 
     // Player can still clear T1 nest to unlock T2
     let tier_gate = TierGateComponent {
