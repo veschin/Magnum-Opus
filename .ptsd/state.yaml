@@ -1,9 +1,13 @@
 features:
   building-groups:
-    stage: seed
+    stage: bdd
     hashes:
+      bdd: ac50a20bea4f888ab698a4be6eaff032395fb5142c6eddb2ce7bef308d0d4216
       seed: bff60b73d4268d59a5765c131f4bc9636a3cbd68cb5b88cbdab4c281aaa31da6
     scores:
+      bdd:
+        score: 8
+        at: "2026-03-01T17:06:14.554882679+03:00"
       prd:
         score: 9
         at: "2026-02-28T17:39:24.916752723+03:00"
@@ -11,10 +15,14 @@ features:
         score: 8
         at: "2026-03-01T16:41:07.22683307+03:00"
   creatures:
-    stage: seed
+    stage: bdd
     hashes:
+      bdd: 6fffc33b1088310569728752c8409e226be8fa48a327cb7c8ca9f0ec0a43e060
       seed: e4fcf5e33b213e96a635d6cdb4b43df197faae7cac1c602f2b6bef226b507cae
     scores:
+      bdd:
+        score: 8
+        at: "2026-03-01T17:06:16.124296573+03:00"
       prd:
         score: 9
         at: "2026-02-28T17:39:26.472794255+03:00"
@@ -22,10 +30,14 @@ features:
         score: 8
         at: "2026-03-01T16:41:07.229352748+03:00"
   energy:
-    stage: seed
+    stage: bdd
     hashes:
+      bdd: bb75f0a2a675d0334506df54ecb67c9bab0de7d225a8a3fb2692fdb548f9c23e
       seed: 80c6a29d15bdbcb00787ee0c0a1eccb4408555618735a562b0e5bc3d50bef9de
     scores:
+      bdd:
+        score: 8
+        at: "2026-03-01T17:06:17.702909883+03:00"
       prd:
         score: 9
         at: "2026-02-28T17:39:28.068605827+03:00"
@@ -33,10 +45,14 @@ features:
         score: 8
         at: "2026-03-01T16:41:07.227556317+03:00"
   meta:
-    stage: seed
+    stage: bdd
     hashes:
+      bdd: ea8724a47b3c6bd859ccae75ff5ed0b0191eabab59998f827928e34b5879a5e5
       seed: 8b78855903488f70011ff627bff4b71363d79cb6a50408065fb89e0a956527da
     scores:
+      bdd:
+        score: 8
+        at: "2026-03-01T17:06:17.324600815+03:00"
       prd:
         score: 8
         at: "2026-02-28T17:39:27.557194974+03:00"
@@ -44,10 +60,14 @@ features:
         score: 8
         at: "2026-03-01T16:41:07.230556791+03:00"
   progression:
-    stage: seed
+    stage: bdd
     hashes:
+      bdd: d5c058de93fb45d8401d11546d2e1ab1a25bb621b472b03829b30ec81d5a7330
       seed: 9eb8147821484a6cd1cfc1d92be1bbc04db476d99567f777174a56bb0a31d775
     scores:
+      bdd:
+        score: 8
+        at: "2026-03-01T17:06:16.677922097+03:00"
       prd:
         score: 9
         at: "2026-02-28T17:39:27.012051854+03:00"
@@ -55,10 +75,14 @@ features:
         score: 8
         at: "2026-03-01T16:41:07.229923625+03:00"
   transport:
-    stage: seed
+    stage: bdd
     hashes:
+      bdd: 9a5b37fb125db29c35742e69eaaa0ae51396b9ccf231d4a1956da764d53aeb0b
       seed: 8e5db75c294ce7951569860102b4f61096f0c223f44b9701cafc182124e35312
     scores:
+      bdd:
+        score: 7
+        at: "2026-03-01T17:06:15.121572043+03:00"
       prd:
         score: 9
         at: "2026-02-28T17:39:25.479418913+03:00"
@@ -66,10 +90,14 @@ features:
         score: 8
         at: "2026-03-01T16:41:07.228732156+03:00"
   ux:
-    stage: seed
+    stage: bdd
     hashes:
+      bdd: 499021a2c1e22a6637917d79058f859e30ad7b4f17afa938dc957fc8aef1b686
       seed: db2697407ff703c2dee6af434badcd76d163187ab372474f94cccc0b35d4883a
     scores:
+      bdd:
+        score: 7
+        at: "2026-03-01T17:06:18.186450599+03:00"
       prd:
         score: 8
         at: "2026-02-28T17:39:28.61917646+03:00"
@@ -77,10 +105,14 @@ features:
         score: 8
         at: "2026-03-01T16:41:07.231112259+03:00"
   world:
-    stage: seed
+    stage: bdd
     hashes:
+      bdd: 2551a55f080a45f9687411afc56a159e19f55a7952899512f57bfc36f7201aff
       seed: 389ca1603942d519de9eded952f00a1c892125b3a8dabcacccce770ba530dc7c
     scores:
+      bdd:
+        score: 9
+        at: "2026-03-01T17:06:15.612793316+03:00"
       prd:
         score: 8
         at: "2026-02-28T17:39:25.973439011+03:00"

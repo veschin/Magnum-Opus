@@ -1,41 +1,41 @@
 features:
   building-groups:
-    stage: seed
+    stage: bdd
     tests: absent
     review: passed
     issues: 0
   creatures:
-    stage: seed
+    stage: bdd
     tests: absent
     review: passed
     issues: 0
   energy:
-    stage: seed
+    stage: bdd
     tests: absent
     review: passed
     issues: 0
   meta:
-    stage: seed
+    stage: bdd
     tests: absent
     review: passed
     issues: 0
   progression:
-    stage: seed
+    stage: bdd
     tests: absent
     review: passed
     issues: 0
   transport:
-    stage: seed
+    stage: bdd
     tests: absent
     review: passed
     issues: 0
   ux:
-    stage: seed
+    stage: bdd
     tests: absent
     review: passed
     issues: 0
   world:
-    stage: seed
+    stage: bdd
     tests: absent
     review: passed
     issues: 0
