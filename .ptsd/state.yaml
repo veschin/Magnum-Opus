@@ -1,57 +1,89 @@
 features:
   building-groups:
-    stage: prd
+    stage: seed
     hashes:
+      seed: bff60b73d4268d59a5765c131f4bc9636a3cbd68cb5b88cbdab4c281aaa31da6
     scores:
       prd:
         score: 9
         at: "2026-02-28T17:39:24.916752723+03:00"
+      seed:
+        score: 8
+        at: "2026-03-01T16:41:07.22683307+03:00"
   creatures:
-    stage: prd
+    stage: seed
     hashes:
+      seed: e4fcf5e33b213e96a635d6cdb4b43df197faae7cac1c602f2b6bef226b507cae
     scores:
       prd:
         score: 9
         at: "2026-02-28T17:39:26.472794255+03:00"
+      seed:
+        score: 8
+        at: "2026-03-01T16:41:07.229352748+03:00"
   energy:
-    stage: prd
+    stage: seed
     hashes:
+      seed: 80c6a29d15bdbcb00787ee0c0a1eccb4408555618735a562b0e5bc3d50bef9de
     scores:
       prd:
         score: 9
         at: "2026-02-28T17:39:28.068605827+03:00"
+      seed:
+        score: 8
+        at: "2026-03-01T16:41:07.227556317+03:00"
   meta:
-    stage: prd
+    stage: seed
     hashes:
+      seed: 8b78855903488f70011ff627bff4b71363d79cb6a50408065fb89e0a956527da
     scores:
       prd:
         score: 8
         at: "2026-02-28T17:39:27.557194974+03:00"
+      seed:
+        score: 8
+        at: "2026-03-01T16:41:07.230556791+03:00"
   progression:
-    stage: prd
+    stage: seed
     hashes:
+      seed: 9eb8147821484a6cd1cfc1d92be1bbc04db476d99567f777174a56bb0a31d775
     scores:
       prd:
         score: 9
         at: "2026-02-28T17:39:27.012051854+03:00"
+      seed:
+        score: 8
+        at: "2026-03-01T16:41:07.229923625+03:00"
   transport:
-    stage: prd
+    stage: seed
     hashes:
+      seed: 8e5db75c294ce7951569860102b4f61096f0c223f44b9701cafc182124e35312
     scores:
       prd:
         score: 9
         at: "2026-02-28T17:39:25.479418913+03:00"
+      seed:
+        score: 8
+        at: "2026-03-01T16:41:07.228732156+03:00"
   ux:
-    stage: prd
+    stage: seed
     hashes:
+      seed: db2697407ff703c2dee6af434badcd76d163187ab372474f94cccc0b35d4883a
     scores:
       prd:
         score: 8
         at: "2026-02-28T17:39:28.61917646+03:00"
+      seed:
+        score: 8
+        at: "2026-03-01T16:41:07.231112259+03:00"
   world:
-    stage: prd
+    stage: seed
     hashes:
+      seed: 389ca1603942d519de9eded952f00a1c892125b3a8dabcacccce770ba530dc7c
     scores:
       prd:
         score: 8
         at: "2026-02-28T17:39:25.973439011+03:00"
+      seed:
+        score: 8
+        at: "2026-03-01T16:41:07.228156811+03:00"
