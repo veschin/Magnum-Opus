@@ -9,7 +9,8 @@ pub fn group_formation_system(
     mut ev_placed: MessageReader<BuildingPlaced>,
     mut ev_removed: MessageReader<BuildingRemoved>,
     buildings: Query<(Entity, &Position, &Building, &Footprint), With<Building>>,
-    existing_groups: Query<Entity, With<Group>>,
+    members: Query<(Entity, &GroupMember), With<Building>>,
+    existing_groups: Query<(Entity, &Manifold), With<Group>>,
 ) {
     if ev_placed.is_empty() && ev_removed.is_empty() {
         return;
@@ -17,8 +18,22 @@ pub fn group_formation_system(
     ev_placed.read().count();
     ev_removed.read().count();
 
+    // Snapshot old manifold contents keyed by group entity before despawn.
+    let mut old_manifolds: HashMap<Entity, HashMap<ResourceType, f32>> = HashMap::new();
+    for (group_entity, manifold) in existing_groups.iter() {
+        if !manifold.resources.is_empty() {
+            old_manifolds.insert(group_entity, manifold.resources.clone());
+        }
+    }
+
+    // Map each building entity to its old group entity.
+    let mut building_to_old_group: HashMap<Entity, Entity> = HashMap::new();
+    for (building_entity, member) in members.iter() {
+        building_to_old_group.insert(building_entity, member.group_id);
+    }
+
     // Despawn old group entities
-    for group_entity in existing_groups.iter() {
+    for (group_entity, _) in existing_groups.iter() {
         commands.entity(group_entity).despawn();
     }
 
@@ -65,10 +80,27 @@ pub fn group_formation_system(
         // Determine group class from majority of building types
         let group_class = determine_group_class(&group_entities, &buildings);
 
+        // Merge old manifold contents from all old groups that contributed buildings to this new group.
+        let mut merged_resources: HashMap<ResourceType, f32> = HashMap::new();
+        let mut seen_old_groups: HashSet<Entity> = HashSet::new();
+        for &be in &group_entities {
+            if let Some(&old_group) = building_to_old_group.get(&be) {
+                if seen_old_groups.insert(old_group) {
+                    if let Some(old_res) = old_manifolds.get(&old_group) {
+                        for (res, amt) in old_res {
+                            *merged_resources.entry(*res).or_default() += amt;
+                        }
+                    }
+                }
+            }
+        }
+
+        let initial_manifold = Manifold { resources: merged_resources };
+
         let group_id = commands
             .spawn((
                 Group,
-                Manifold::default(),
+                initial_manifold,
                 GroupEnergy::default(),
                 GroupControl::default(),
                 GroupStats::default(),
@@ -117,13 +149,21 @@ fn determine_group_class(
 }
 
 /// Handles SetGroupPriority commands.
+/// Updates both GroupControl.priority (management priority) and GroupEnergy.priority
+/// (energy allocation priority) so the energy system reflects the change immediately.
 pub fn group_priority_system(
     mut ev: MessageReader<SetGroupPriority>,
-    mut controls: Query<&mut GroupControl, With<Group>>,
+    mut groups: Query<(&mut GroupControl, &mut GroupEnergy), With<Group>>,
 ) {
     for cmd in ev.read() {
-        if let Ok(mut ctrl) = controls.get_mut(cmd.group_id) {
+        if let Ok((mut ctrl, mut ge)) = groups.get_mut(cmd.group_id) {
             ctrl.priority = cmd.priority;
+            // Sync GroupEnergy.priority from GroupPriority command
+            ge.priority = match cmd.priority {
+                crate::components::GroupPriority::High => EnergyPriority::High,
+                crate::components::GroupPriority::Medium => EnergyPriority::Medium,
+                crate::components::GroupPriority::Low => EnergyPriority::Low,
+            };
         }
     }
 }
