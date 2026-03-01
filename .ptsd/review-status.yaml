@@ -1,41 +1,41 @@
 features:
   building-groups:
-    stage: bdd
-    tests: absent
+    stage: tests
+    tests: passing
     review: passed
     issues: 0
   creatures:
-    stage: bdd
-    tests: absent
+    stage: tests
+    tests: passing
     review: passed
     issues: 0
   energy:
-    stage: bdd
-    tests: absent
+    stage: tests
+    tests: passing
     review: passed
     issues: 0
   meta:
-    stage: bdd
-    tests: absent
+    stage: tests
+    tests: passing
     review: passed
     issues: 0
   progression:
-    stage: bdd
-    tests: absent
+    stage: tests
+    tests: passing
     review: passed
     issues: 0
   transport:
-    stage: bdd
-    tests: absent
+    stage: tests
+    tests: passing
     review: passed
     issues: 0
   ux:
-    stage: bdd
-    tests: absent
+    stage: tests
+    tests: passing
     review: passed
     issues: 0
   world:
     stage: impl
-    tests: absent
+    tests: passing
     review: passed
     issues: 0

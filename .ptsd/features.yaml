@@ -1,32 +1,25 @@
 features:
   - id: building-groups
-    name: "Building Groups"
-    stage: prd
-
+    title: 
+    status: in-progress
   - id: transport
-    name: "Transport"
-    stage: prd
-
+    title: 
+    status: in-progress
   - id: world
-    name: "World & Biomes"
-    stage: prd
-
+    title: 
+    status: 
   - id: creatures
-    name: "Creatures & Combat"
-    stage: prd
-
+    title: 
+    status: in-progress
   - id: progression
-    name: "Progression"
-    stage: prd
-
+    title: 
+    status: in-progress
   - id: meta
-    name: "Meta-Progression"
-    stage: prd
-
+    title: 
+    status: in-progress
   - id: energy
-    name: "Energy"
-    stage: prd
-
+    title: 
+    status: in-progress
   - id: ux
-    name: "UX Tools"
-    stage: prd
+    title: 
+    status: in-progress
