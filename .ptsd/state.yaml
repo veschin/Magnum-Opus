@@ -14,11 +14,15 @@ features:
       seed:
         score: 8
         at: "0001-01-01T00:00:00Z"
+    tests:
+      - .ptsd/bdd/building-groups.feature::magnum_opus/src/tests/building_groups_bdd.rs
   creatures:
     stage: bdd
     hashes:
       bdd: 6fffc33b1088310569728752c8409e226be8fa48a327cb7c8ca9f0ec0a43e060
       seed: e4fcf5e33b213e96a635d6cdb4b43df197faae7cac1c602f2b6bef226b507cae
+      test_results: passed:1 failed:0
+      test_status: passing
     scores:
       bdd:
         score: 8
@@ -31,11 +35,14 @@ features:
         at: "0001-01-01T00:00:00Z"
     tests:
       - .ptsd/bdd/creatures/creatures.feature::spike/src/tests/creatures_bdd.rs
+      - .ptsd/bdd/creatures/creatures.feature::magnum_opus/src/tests/creatures_bdd.rs
   energy:
     stage: bdd
     hashes:
       bdd: bb75f0a2a675d0334506df54ecb67c9bab0de7d225a8a3fb2692fdb548f9c23e
       seed: 80c6a29d15bdbcb00787ee0c0a1eccb4408555618735a562b0e5bc3d50bef9de
+      test_results: passed:1 failed:0
+      test_status: passing
     scores:
       bdd:
         score: 8
@@ -48,6 +55,7 @@ features:
         at: "0001-01-01T00:00:00Z"
     tests:
       - .ptsd/bdd/energy/energy.feature::spike/src/tests/energy_bdd.rs
+      - .ptsd/bdd/energy/energy.feature::magnum_opus/src/tests/energy_bdd.rs
   meta:
     stage: bdd
     hashes:
@@ -65,6 +73,7 @@ features:
         at: "0001-01-01T00:00:00Z"
     tests:
       - .ptsd/bdd/meta/meta.feature::spike/src/tests/meta_bdd.rs
+      - .ptsd/bdd/meta/meta.feature::magnum_opus/src/tests/meta_bdd.rs
   progression:
     stage: bdd
     hashes:
@@ -82,6 +91,7 @@ features:
         at: "0001-01-01T00:00:00Z"
     tests:
       - .ptsd/bdd/progression/progression.feature::spike/src/tests/progression_bdd.rs
+      - .ptsd/bdd/progression/progression.feature::magnum_opus/src/tests/progression_bdd.rs
   transport:
     stage: bdd
     hashes:
@@ -97,6 +107,8 @@ features:
       seed:
         score: 8
         at: "0001-01-01T00:00:00Z"
+    tests:
+      - .ptsd/bdd/transport/transport.feature::magnum_opus/src/tests/transport_bdd.rs
   ux:
     stage: bdd
     hashes:
@@ -112,6 +124,8 @@ features:
       seed:
         score: 8
         at: "0001-01-01T00:00:00Z"
+    tests:
+      - .ptsd/bdd/ux/ux.feature::magnum_opus/src/tests/ux_bdd.rs
   world:
     stage: bdd
     hashes:
@@ -127,3 +141,5 @@ features:
       seed:
         score: 8
         at: "0001-01-01T00:00:00Z"
+    tests:
+      - .ptsd/bdd/world/world.feature::magnum_opus/src/tests/world_bdd_terrain.rs
