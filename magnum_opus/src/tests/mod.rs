@@ -1,0 +1,13 @@
+mod placement_tests;
+mod group_tests;
+mod power_tests;
+mod integration_test;
+mod audit_test;
+mod creatures_bdd;
+mod transport_bdd;
+mod meta_bdd;
+mod world_bdd;
+mod building_groups_bdd;
+mod progression_bdd;
+mod energy_bdd;
+mod ux_bdd;
