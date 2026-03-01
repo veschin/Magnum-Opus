@@ -1,0 +1,123 @@
+# Magnum Opus — Energy Fixtures
+# Test scenarios for energy generation, distribution, surplus/deficit behavior.
+# References buildings and resources from building-groups seed.
+
+fixtures:
+  # ── Happy Path ──
+
+  - id: single_turbine
+    description: "One wind turbine — generates 20 energy, no consumers"
+    grid: [10, 10]
+    placements:
+      - { building: wind_turbine, pos: [5, 5] }
+
+  - id: balanced_energy
+    description: "Turbine (20 gen) + miner (5 consumption) — surplus 15"
+    grid: [10, 10]
+    terrain_tiles:
+      - { pos: [3, 3], type: iron_vein }
+    placements:
+      - { building: iron_miner, pos: [3, 3] }
+      - { building: wind_turbine, pos: [4, 3] }
+
+  - id: surplus_energy
+    description: "2 turbines (40 gen) + 1 miner (5 consumption) — big surplus"
+    grid: [10, 10]
+    terrain_tiles:
+      - { pos: [3, 3], type: iron_vein }
+    placements:
+      - { building: iron_miner, pos: [3, 3] }
+      - { building: wind_turbine, pos: [4, 3] }
+      - { building: wind_turbine, pos: [4, 4] }
+
+  - id: deficit_energy
+    description: "1 turbine (20 gen) + smelter (10) + constructor (15) — deficit 5"
+    grid: [10, 10]
+    terrain_tiles:
+      - { pos: [3, 3], type: iron_vein }
+    placements:
+      - { building: iron_miner, pos: [3, 3] }
+      - { building: iron_smelter, pos: [4, 3] }
+      - { building: constructor, pos: [5, 3] }
+      - { building: wind_turbine, pos: [3, 4] }
+
+  - id: priority_allocation
+    description: "Two groups with different priorities competing for limited energy"
+    grid: [16, 10]
+    terrain_tiles:
+      - { pos: [2, 3], type: iron_vein }
+      - { pos: [10, 3], type: copper_vein }
+    placements:
+      # Group A: iron mining (will be HIGH priority)
+      - { building: iron_miner, pos: [2, 3] }
+      - { building: iron_smelter, pos: [3, 3] }
+      # Group B: copper mining (will be LOW priority)
+      - { building: copper_miner, pos: [10, 3] }
+      - { building: copper_smelter, pos: [11, 3] }
+      # Limited energy
+      - { building: wind_turbine, pos: [6, 3] }
+    group_priorities:
+      - { group_containing: [2, 3], priority: high }
+      - { group_containing: [10, 3], priority: low }
+
+  - id: biome_bonus_energy
+    description: "Water wheel in ocean biome — gets 1.4x bonus"
+    grid: [10, 10]
+    biome: ocean
+    terrain_tiles:
+      - { pos: [5, 5], type: water_source }
+    placements:
+      - { building: water_wheel, pos: [5, 5] }
+
+  # ── Edge Cases ──
+
+  - id: zero_energy
+    description: "No energy buildings — all production at zero speed"
+    grid: [10, 10]
+    terrain_tiles:
+      - { pos: [3, 3], type: iron_vein }
+    placements:
+      - { building: iron_miner, pos: [3, 3] }
+      - { building: iron_smelter, pos: [4, 3] }
+
+  - id: exact_balance
+    description: "Generation exactly equals consumption — no bonus, no penalty"
+    grid: [10, 10]
+    terrain_tiles:
+      - { pos: [3, 3], type: iron_vein }
+    placements:
+      # 20 gen = 5 (miner) + 5 (miner) + 10 (smelter)
+      - { building: iron_miner, pos: [3, 3] }
+      - { building: iron_miner, pos: [3, 4] }
+      - { building: iron_smelter, pos: [4, 3] }
+      - { building: wind_turbine, pos: [4, 4] }
+    terrain_tiles:
+      - { pos: [3, 3], type: iron_vein }
+      - { pos: [3, 4], type: iron_vein }
+
+  - id: energy_building_destroyed
+    description: "Turbine destroyed mid-production — immediate energy drop"
+    grid: [10, 10]
+    terrain_tiles:
+      - { pos: [3, 3], type: iron_vein }
+    placements:
+      - { building: iron_miner, pos: [3, 3] }
+      - { building: wind_turbine, pos: [4, 3] }
+    pending_removal:
+      - { pos: [4, 3] }
+
+  - id: all_high_priority
+    description: "All groups set to HIGH — should share energy equally"
+    grid: [16, 10]
+    terrain_tiles:
+      - { pos: [2, 3], type: iron_vein }
+      - { pos: [10, 3], type: copper_vein }
+    placements:
+      - { building: iron_miner, pos: [2, 3] }
+      - { building: iron_smelter, pos: [3, 3] }
+      - { building: copper_miner, pos: [10, 3] }
+      - { building: copper_smelter, pos: [11, 3] }
+      - { building: wind_turbine, pos: [6, 3] }
+    group_priorities:
+      - { group_containing: [2, 3], priority: high }
+      - { group_containing: [10, 3], priority: high }

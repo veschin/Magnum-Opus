@@ -1,0 +1,48 @@
+# Magnum Opus — Energy Sources
+# Defines energy generation buildings per biome, with scaling and placement rules.
+# References building_types from building-groups seed.
+# energy_generation values must match building_types.yaml exactly.
+
+energy_sources:
+  # ── T1 Universal ──
+  - id: wind_turbine
+    tier: 1
+    energy_generation: 20
+    terrain_req: null
+    biome_affinity: null       # works everywhere
+    biome_bonus: { desert: 1.3, ocean: 1.1 }  # wind-rich biomes get bonus
+
+  # ── T1 Biome-Specific ──
+  - id: water_wheel
+    tier: 1
+    energy_generation: 25
+    terrain_req: water_source
+    biome_affinity: [forest, ocean]
+    biome_bonus: { ocean: 1.4 }
+
+  # ── T2 Biome-Specific ──
+  - id: lava_generator
+    tier: 2
+    energy_generation: 50
+    terrain_req: lava_source
+    biome_affinity: [volcanic]
+    biome_bonus: { volcanic: 1.0 }  # no extra bonus, already strong base
+
+  # ── T3 Universal ──
+  - id: mana_reactor
+    tier: 3
+    energy_generation: 80
+    terrain_req: null
+    biome_affinity: null
+    biome_bonus: {}
+    # Consumes mana_crystal as fuel (defined inline — reactor is self-contained)
+    fuel_recipe:
+      inputs: { mana_crystal: 1 }
+      duration_ticks: 300
+
+# Biome energy availability summary:
+# Forest:   water_wheel (T1, abundant), wind_turbine (T1)
+# Volcanic: lava_generator (T2, powerful), wind_turbine (T1)
+# Desert:   wind_turbine (T1, bonus), mana_reactor (T3)
+# Ocean:    water_wheel (T1, strong bonus), wind_turbine (T1)
+# All:      mana_reactor (T3, universal endgame)

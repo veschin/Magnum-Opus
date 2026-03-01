@@ -1,0 +1,85 @@
+# Magnum Opus — UX Fixtures
+# Test scenarios for calculator, dashboard, chain visualizer.
+
+fixtures:
+  # ── Happy Path ──
+
+  - id: calculator_simple_query
+    description: "Calculator: request 2 iron_bar/min → shows building chain"
+    calculator_input:
+      target_resource: iron_bar
+      target_rate_per_min: 2.0
+      current_tier: 1
+      biome: forest
+
+  - id: dashboard_active_production
+    description: "Dashboard with 2 groups producing — shows rates and energy"
+    grid: [16, 10]
+    terrain_tiles:
+      - { pos: [2, 5], type: iron_vein }
+      - { pos: [3, 5], type: iron_vein }
+    placements:
+      - { building: iron_miner, pos: [2, 5] }
+      - { building: iron_miner, pos: [3, 5] }
+      - { building: iron_smelter, pos: [4, 5] }
+      - { building: wind_turbine, pos: [5, 5] }
+    # Expected: dashboard shows iron_ore rate, iron_bar rate, energy surplus
+
+  - id: chain_visualizer_bottleneck
+    description: "Chain visualizer highlights smelter as bottleneck"
+    grid: [16, 10]
+    terrain_tiles:
+      - { pos: [2, 5], type: iron_vein }
+      - { pos: [3, 5], type: iron_vein }
+      - { pos: [2, 6], type: iron_vein }
+    placements:
+      # 3 miners feeding 1 smelter — smelter is bottleneck
+      - { building: iron_miner, pos: [2, 5] }
+      - { building: iron_miner, pos: [3, 5] }
+      - { building: iron_miner, pos: [2, 6] }
+      - { building: iron_smelter, pos: [4, 5] }  # can't process fast enough
+      - { building: wind_turbine, pos: [4, 6] }
+
+  - id: opus_rate_comparison
+    description: "Dashboard shows current rate vs opus milestone target"
+    opus_nodes:
+      - { resource: iron_ore, required_rate: 4.0 }
+      - { resource: iron_bar, required_rate: 3.0 }
+    production_rates:
+      iron_ore: 5.2                # above target — green
+      iron_bar: 1.8                # below target — red
+
+  # ── Edge Cases ──
+
+  - id: empty_dashboard
+    description: "Dashboard at run start — all zeros, no errors"
+    grid: [10, 10]
+    placements: []
+    # Expected: energy=0, rates=0, no crash
+
+  - id: chain_visualizer_no_groups
+    description: "Chain visualizer with 0 groups — empty overlay"
+    grid: [10, 10]
+    placements: []
+    # Expected: empty overlay, no crash, helpful message
+
+  - id: calculator_tier_locked
+    description: "Calculator asked for T3 item at T1 — shows tier requirement"
+    calculator_input:
+      target_resource: opus_ingot
+      target_rate_per_min: 1.0
+      current_tier: 1
+      biome: forest
+    # Expected: "Requires T3" message
+
+  - id: dashboard_energy_deficit
+    description: "Dashboard during severe energy deficit — red indicators"
+    grid: [16, 10]
+    terrain_tiles:
+      - { pos: [2, 5], type: iron_vein }
+    placements:
+      - { building: iron_miner, pos: [2, 5] }
+      - { building: iron_smelter, pos: [3, 5] }
+      - { building: constructor, pos: [4, 5] }
+      # No energy buildings — total deficit
+    # Expected: energy gauge red, all production rates ~0

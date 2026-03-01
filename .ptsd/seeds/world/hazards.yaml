@@ -1,0 +1,144 @@
+# Magnum Opus — Hazards
+# Biome-specific recurring danger events.
+# Resolves White Spot #3: sacrifice formula.
+# Predictable zone + timing. Destroy buildings but enhance tiles.
+
+hazards:
+  - id: eruption
+    biome: volcanic
+    description: "Lava eruption destroys buildings, enhances tiles with obsidian"
+    zone_radius: 4                # affected area radius
+    warning_ticks: 200            # 10 sec warning at 20 TPS
+    interval_ticks: 2400          # 2 min between events
+    interval_variance: 600        # +/- 30 sec randomness
+    intensity: 1.0
+    element_effect: { fire: 0.8 }
+    tile_enhancement:
+      type: enriched
+      magnitude: 1.5              # 50% bonus to extraction on enhanced tiles
+      duration_ticks: 6000        # 5 min
+    destruction:
+      buildings: true
+      paths: true
+    tier_scaling:                  # hazards get stronger in T2/T3
+      t2_intensity: 1.3
+      t3_intensity: 1.6
+
+  - id: ash_storm
+    biome: volcanic
+    description: "Choking ash reduces visibility and production speed"
+    zone_radius: 6
+    warning_ticks: 300
+    interval_ticks: 1800
+    interval_variance: 400
+    intensity: 0.6
+    element_effect: { fire: 0.3, wind: 0.5 }
+    tile_enhancement:
+      type: fertile_ash
+      magnitude: 1.2
+      duration_ticks: 4000
+    destruction:
+      buildings: false            # doesn't destroy, just slows
+      paths: false
+    production_penalty: 0.5       # 50% speed during storm
+
+  - id: wildfire
+    biome: forest
+    description: "Spreads through dense forest, destroys wood-based buildings"
+    zone_radius: 5
+    warning_ticks: 150
+    interval_ticks: 3000
+    interval_variance: 800
+    intensity: 0.8
+    element_effect: { fire: 0.9, wind: 0.3 }
+    tile_enhancement:
+      type: charred_fertile
+      magnitude: 1.3
+      duration_ticks: 5000
+    destruction:
+      buildings: true
+      paths: true
+
+  - id: storm
+    biome: [forest, ocean]
+    description: "Heavy rain and wind. Floods low tiles, fills water sources"
+    zone_radius: 8
+    warning_ticks: 400
+    interval_ticks: 2000
+    interval_variance: 500
+    intensity: 0.7
+    element_effect: { water: 0.6, wind: 0.7 }
+    tile_enhancement:
+      type: waterlogged
+      magnitude: 1.1
+      duration_ticks: 3000
+    destruction:
+      buildings: false
+      paths: true                 # washes away paths
+
+  - id: sandstorm
+    biome: desert
+    description: "Reduces visibility to zero, damages exposed buildings"
+    zone_radius: 7
+    warning_ticks: 250
+    interval_ticks: 2200
+    interval_variance: 600
+    intensity: 0.7
+    element_effect: { wind: 0.9 }
+    tile_enhancement:
+      type: uncovered_deposit
+      magnitude: 1.4
+      duration_ticks: 4000
+    destruction:
+      buildings: true
+      paths: false
+
+  - id: heat_wave
+    biome: desert
+    description: "Extreme heat drains water resources, boosts fire elements"
+    zone_radius: 10
+    warning_ticks: 500
+    interval_ticks: 3000
+    interval_variance: 700
+    intensity: 0.5
+    element_effect: { fire: 0.4 }
+    tile_enhancement:
+      type: glass_sand
+      magnitude: 1.2
+      duration_ticks: 3500
+    destruction:
+      buildings: false
+      paths: false
+    water_drain_rate: 0.1         # drains water from manifolds
+
+  - id: tsunami
+    biome: ocean
+    description: "Massive wave destroys coastal buildings, deposits rare materials"
+    zone_radius: 6
+    warning_ticks: 300
+    interval_ticks: 3600
+    interval_variance: 900
+    intensity: 1.2
+    element_effect: { water: 1.0 }
+    tile_enhancement:
+      type: tidal_deposit
+      magnitude: 1.6
+      duration_ticks: 5000
+    destruction:
+      buildings: true
+      paths: true
+
+# Sacrifice mechanic (White Spot #3 resolution)
+sacrifice:
+  base_success_chance: 0.65       # 65% base chance of bonus
+  # Modifiers:
+  intensity_penalty: -0.15        # per 1.0 intensity above base
+  altar_bonus: 0.10               # sacrifice_altar building adds 10%
+  tier_penalty: { t2: -0.05, t3: -0.10 }  # harder in later tiers
+  # Result on success:
+  success_reward_multiplier: 2.0  # tile enhancement magnitude × 2
+  # Result on miss:
+  miss_result: building_destroyed
+  # Final formula:
+  # chance = base_success_chance + altar_bonus - (intensity * intensity_penalty) - tier_penalty
+  # chance = clamp(chance, 0.10, 0.90)  # never 0% or 100%

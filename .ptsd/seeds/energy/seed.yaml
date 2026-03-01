@@ -1,0 +1,5 @@
+feature: energy
+files:
+  - energy_sources.yaml
+  - throttle_params.yaml
+  - fixtures.yaml

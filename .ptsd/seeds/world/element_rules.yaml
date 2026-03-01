@@ -1,0 +1,56 @@
+# Magnum Opus — Element Interaction Rules
+# Resolves White Spot #7 from ECS.md: element interaction rates.
+# 4 elements: fire, water, cold, wind. Each tile has float levels.
+# Interactions happen every tick in ElementInteractionSystem.
+
+elements:
+  - id: fire
+    decay_rate: 0.95              # per tick multiplier (fire slowly dies)
+    threshold: 0.3                # above this, fire effects activate
+
+  - id: water
+    decay_rate: 0.99              # water evaporates slowly
+    threshold: 0.2
+
+  - id: cold
+    decay_rate: 0.93              # cold dissipates faster than fire
+    threshold: 0.4
+
+  - id: wind
+    decay_rate: 1.0               # wind doesn't decay — set by weather directly
+    threshold: 0.1
+
+# Interactions: condition → effect
+interactions:
+  - id: fire_spread
+    condition: { fire: ">threshold", wind: ">0" }
+    effect: spread_to_cardinal_neighbors
+    formula: "spread_chance = tile.fire * tile.wind * spread_factor"
+    spread_factor: 0.15
+    spread_amount: 0.2
+
+  - id: rain_fills
+    condition: { water: ">0", terrain: dry_soil }
+    effect: change_terrain
+    result_terrain: wet_soil
+
+  - id: cold_freezes_water
+    condition: { cold: ">threshold", water: ">0" }
+    effect: freeze
+    freeze_rate: 0.1              # water reduced per tick
+    result_terrain: ice
+
+  - id: fire_evaporates_water
+    condition: { fire: ">threshold", water: ">0" }
+    effect: evaporate
+    evaporate_rate: 0.15          # water reduced per tick
+
+  - id: wind_fans_fire
+    condition: { wind: ">threshold", fire: ">0.1" }
+    effect: amplify
+    amplify_factor: 1.1           # fire intensity multiplied
+
+  - id: water_extinguishes_fire
+    condition: { water: ">threshold", fire: ">0" }
+    effect: reduce
+    reduce_rate: 0.2              # fire reduced per tick

@@ -1,0 +1,7 @@
+feature: world
+files:
+  - biomes.yaml
+  - element_rules.yaml
+  - hazards.yaml
+  - weather.yaml
+  - fixtures.yaml

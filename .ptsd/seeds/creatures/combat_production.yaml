@@ -1,0 +1,44 @@
+# Magnum Opus — Combat Production Rates
+# How combat groups generate organic resources and protection.
+# Combat groups are the PRIMARY organic resource pipeline.
+# References recipes from building-groups seed.
+
+combat_production:
+  # Base rates (before energy modifier)
+  # supply_ratio = min(actual_input / required_input) across all inputs, clamped [0, 1]
+  # combat_efficiency = supply_ratio
+
+  imp_camp:
+    base_organic_rate: 1.0         # organic items per production cycle
+    base_protection_radius: 6      # tiles of protection
+    protection_dps: 3.0            # damage per tick to creatures in radius
+    breach_threshold: 0.3          # below this efficiency, enemies break through
+    # At full supply: 1.0 organic/cycle, 6-tile radius, 3 DPS
+    # At 50% supply: 0.5 organic/cycle, 3-tile radius, 1.5 DPS
+    # At <30% supply: breach — enemies damage output senders
+
+  breeding_pen:
+    base_organic_rate: 0.6         # slower but renewable
+    base_protection_radius: 0      # no protection — purely production
+    # Breeding pens don't fight, they just produce organics from water + herbs
+
+  war_lodge:
+    base_organic_rate: 1.5         # T2 — stronger than imp camp
+    base_protection_radius: 9
+    protection_dps: 6.0
+    breach_threshold: 0.25
+
+# Minion visibility in combat buildings:
+# visible_minion_count = floor(max_minions * supply_ratio)
+# max_minions per building: imp_camp=4, breeding_pen=3, war_lodge=6
+minion_display:
+  imp_camp: { max_minions: 4 }
+  breeding_pen: { max_minions: 3 }
+  war_lodge: { max_minions: 6 }
+
+# Territory breach effects:
+breach_effects:
+  target: output_senders           # enemies damage output senders first
+  damage_rate: 2.0                 # damage per tick to output senders
+  # Destroyed output sender = disconnected transport path
+  # Player must restore supply to combat group to stop breach

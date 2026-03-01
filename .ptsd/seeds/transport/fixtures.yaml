@@ -1,0 +1,165 @@
+# Magnum Opus — Transport Fixtures
+# Test scenarios for rune paths, pipes, minion carry, tier upgrades.
+
+fixtures:
+  # ── Happy Path ──
+
+  - id: minion_carry_basic
+    description: "Two adjacent groups within minion range — auto-carry iron ore"
+    grid: [12, 10]
+    terrain_tiles:
+      - { pos: [2, 5], type: iron_vein }
+      - { pos: [3, 5], type: iron_vein }
+    placements:
+      # Group A: extraction
+      - { building: iron_miner, pos: [2, 5] }
+      - { building: iron_miner, pos: [3, 5] }
+      # Group B: synthesis (within minion range of 5)
+      - { building: iron_smelter, pos: [6, 5] }
+      - { building: wind_turbine, pos: [4, 5] }
+
+  - id: rune_path_basic
+    description: "T1 rune path connecting two groups — solid resource flow"
+    grid: [16, 10]
+    terrain_tiles:
+      - { pos: [2, 5], type: iron_vein }
+    placements:
+      - { building: iron_miner, pos: [2, 5] }
+      - { building: iron_smelter, pos: [10, 5] }
+      - { building: wind_turbine, pos: [3, 5] }
+      - { building: wind_turbine, pos: [11, 5] }
+    paths:
+      - { type: rune_path, from_group: [2, 5], to_group: [10, 5], waypoints: [[4, 5], [5, 5], [6, 5], [7, 5], [8, 5], [9, 5]] }
+
+  - id: pipe_basic
+    description: "T1 pipe connecting water pump to tree farm — liquid flow"
+    grid: [12, 10]
+    terrain_tiles:
+      - { pos: [2, 5], type: water_source }
+    placements:
+      - { building: water_pump, pos: [2, 5] }
+      - { building: tree_farm, pos: [8, 5] }   # 2x2
+      - { building: wind_turbine, pos: [3, 5] }
+      - { building: wind_turbine, pos: [8, 7] }
+    paths:
+      - { type: pipe, from_group: [2, 5], to_group: [8, 5], waypoints: [[4, 5], [5, 5], [6, 5], [7, 5]] }
+
+  - id: tier_upgrade
+    description: "T1 paths exist, then T2 unlocked — all paths auto-upgrade"
+    grid: [16, 10]
+    tier: 1
+    terrain_tiles:
+      - { pos: [2, 5], type: iron_vein }
+    placements:
+      - { building: iron_miner, pos: [2, 5] }
+      - { building: iron_smelter, pos: [10, 5] }
+      - { building: wind_turbine, pos: [3, 5] }
+    paths:
+      - { type: rune_path, from_group: [2, 5], to_group: [10, 5], waypoints: [[4, 5], [5, 5], [6, 5], [7, 5], [8, 5], [9, 5]] }
+    pending_action:
+      - { type: unlock_tier, tier: 2 }
+
+  - id: multi_path_network
+    description: "Three groups connected by paths — iron flow through network"
+    grid: [20, 10]
+    terrain_tiles:
+      - { pos: [2, 5], type: iron_vein }
+      - { pos: [3, 5], type: iron_vein }
+    placements:
+      - { building: iron_miner, pos: [2, 5] }
+      - { building: iron_miner, pos: [3, 5] }
+      - { building: iron_smelter, pos: [10, 5] }
+      - { building: constructor, pos: [16, 5] }  # 2x2
+      - { building: wind_turbine, pos: [4, 5] }
+      - { building: wind_turbine, pos: [11, 5] }
+      - { building: wind_turbine, pos: [16, 7] }
+    paths:
+      - { type: rune_path, from_group: [2, 5], to_group: [10, 5], waypoints: [[5, 5], [6, 5], [7, 5], [8, 5], [9, 5]] }
+      - { type: rune_path, from_group: [10, 5], to_group: [16, 5], waypoints: [[12, 5], [13, 5], [14, 5], [15, 5]] }
+
+  # ── Edge Cases ──
+
+  - id: minion_carry_out_of_range
+    description: "Two groups beyond minion carry range — no auto-transport"
+    grid: [20, 10]
+    terrain_tiles:
+      - { pos: [2, 5], type: iron_vein }
+    placements:
+      - { building: iron_miner, pos: [2, 5] }
+      - { building: iron_smelter, pos: [15, 5] }  # distance 13, range is 5
+      - { building: wind_turbine, pos: [3, 5] }
+
+  - id: minion_no_liquid
+    description: "Water pump near tree farm but no pipe — minions can't carry liquids"
+    grid: [12, 10]
+    terrain_tiles:
+      - { pos: [2, 5], type: water_source }
+    placements:
+      - { building: water_pump, pos: [2, 5] }
+      - { building: tree_farm, pos: [5, 5] }  # within minion range
+      - { building: wind_turbine, pos: [3, 5] }
+    # water is liquid — minions cannot carry it
+
+  - id: path_throughput_cap
+    description: "T1 path with more production than capacity — excess queues at sender"
+    grid: [16, 10]
+    terrain_tiles:
+      - { pos: [2, 5], type: iron_vein }
+      - { pos: [3, 5], type: iron_vein }
+      - { pos: [2, 6], type: iron_vein }
+      - { pos: [3, 6], type: iron_vein }
+    placements:
+      # 4 miners producing 4 ore/60 ticks, T1 path capacity = 2/tick
+      - { building: iron_miner, pos: [2, 5] }
+      - { building: iron_miner, pos: [3, 5] }
+      - { building: iron_miner, pos: [2, 6] }
+      - { building: iron_miner, pos: [3, 6] }
+      - { building: iron_smelter, pos: [10, 5] }
+      - { building: wind_turbine, pos: [4, 5] }
+      - { building: wind_turbine, pos: [4, 6] }
+    paths:
+      - { type: rune_path, from_group: [2, 5], to_group: [10, 5], waypoints: [[5, 5], [6, 5], [7, 5], [8, 5], [9, 5]] }
+
+  - id: path_destroyed_mid_segment
+    description: "Middle segment of path destroyed — resources stop, warning shown"
+    grid: [16, 10]
+    terrain_tiles:
+      - { pos: [2, 5], type: iron_vein }
+    placements:
+      - { building: iron_miner, pos: [2, 5] }
+      - { building: iron_smelter, pos: [10, 5] }
+      - { building: wind_turbine, pos: [3, 5] }
+    paths:
+      - { type: rune_path, from_group: [2, 5], to_group: [10, 5], waypoints: [[4, 5], [5, 5], [6, 5], [7, 5], [8, 5], [9, 5]] }
+    pending_removal:
+      - { path_segment: [6, 5] }
+
+  - id: path_through_hazard
+    description: "Path crosses hazard zone — hazard can destroy segment"
+    biome: volcanic
+    grid: [16, 10]
+    terrain_tiles:
+      - { pos: [2, 5], type: iron_vein }
+    hazard_zones:
+      - { type: eruption, center: [7, 5], radius: 2, next_event_tick: 100 }
+    placements:
+      - { building: iron_miner, pos: [2, 5] }
+      - { building: iron_smelter, pos: [12, 5] }
+      - { building: wind_turbine, pos: [3, 5] }
+    paths:
+      - { type: rune_path, from_group: [2, 5], to_group: [12, 5], waypoints: [[4, 5], [5, 5], [6, 5], [7, 5], [8, 5], [9, 5], [10, 5], [11, 5]] }
+
+  - id: path_overlap_attempt
+    description: "Attempt to build path on tile already occupied by another path"
+    grid: [16, 10]
+    terrain_tiles:
+      - { pos: [2, 3], type: iron_vein }
+      - { pos: [2, 7], type: copper_vein }
+    placements:
+      - { building: iron_miner, pos: [2, 3] }
+      - { building: iron_smelter, pos: [10, 3] }
+      - { building: copper_miner, pos: [2, 7] }
+      - { building: copper_smelter, pos: [10, 7] }
+    paths:
+      - { type: rune_path, from_group: [2, 3], to_group: [10, 3], waypoints: [[4, 5], [5, 5], [6, 5], [7, 5], [8, 5]] }
+      - { type: rune_path, from_group: [2, 7], to_group: [10, 7], waypoints: [[4, 5], [5, 5], [6, 5], [7, 5], [8, 5]] }  # same tiles — should fail

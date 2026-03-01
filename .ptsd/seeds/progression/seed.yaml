@@ -1,0 +1,8 @@
+feature: progression
+files:
+  - opus_template.yaml
+  - milestones.yaml
+  - mini_opus_types.yaml
+  - scoring.yaml
+  - starting_kit.yaml
+  - fixtures.yaml

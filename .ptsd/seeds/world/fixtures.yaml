@@ -1,0 +1,143 @@
+# Magnum Opus — World Fixtures
+# Test scenarios for biome generation, hazards, weather, elements, fog.
+
+fixtures:
+  # ── Happy Path ──
+
+  - id: forest_start
+    description: "Forest biome starting area — revealed, safe, resources nearby"
+    biome: forest
+    grid: [20, 20]
+    starting_area: { center: [10, 10], radius: 8 }
+    terrain_tiles:
+      - { pos: [8, 10], type: iron_vein }
+      - { pos: [9, 10], type: iron_vein }
+      - { pos: [12, 10], type: water_source }
+      - { pos: [10, 8], type: stone_deposit }
+      - { pos: [10, 12], type: grass }
+    weather: clear
+
+  - id: volcanic_lava_area
+    description: "Volcanic biome area with lava sources and obsidian veins"
+    biome: volcanic
+    grid: [16, 16]
+    terrain_tiles:
+      - { pos: [4, 4], type: lava_source }
+      - { pos: [5, 4], type: lava_source }
+      - { pos: [8, 8], type: obsidian_vein }
+      - { pos: [9, 8], type: obsidian_vein }
+      - { pos: [6, 6], type: iron_vein }
+      - { pos: [3, 3], type: scorched_rock }
+
+  - id: hazard_zone_with_buildings
+    description: "Buildings in eruption hazard zone — tests destruction + enhancement"
+    biome: volcanic
+    grid: [16, 16]
+    terrain_tiles:
+      - { pos: [5, 5], type: iron_vein }
+      - { pos: [6, 5], type: scorched_rock }
+    hazard_zones:
+      - { type: eruption, center: [6, 6], radius: 4, next_event_tick: 100 }
+    placements:
+      - { building: iron_miner, pos: [5, 5] }
+      - { building: wind_turbine, pos: [6, 5] }
+
+  - id: sacrifice_in_hazard
+    description: "Sacrifice altar placed in hazard zone — tests odds calculation"
+    biome: volcanic
+    grid: [16, 16]
+    terrain_tiles:
+      - { pos: [6, 6], type: scorched_rock }
+    hazard_zones:
+      - { type: eruption, center: [6, 6], radius: 4, next_event_tick: 100 }
+    placements:
+      - { building: sacrifice_altar, pos: [6, 6] }
+
+  - id: weather_rain_cycle
+    description: "Forest biome transitioning from clear to rain — water levels rise"
+    biome: forest
+    grid: [10, 10]
+    terrain_tiles:
+      - { pos: [5, 5], type: grass }
+    weather: rain
+    initial_elements:
+      - { pos: [5, 5], fire: 0.0, water: 0.0, cold: 0.0, wind: 0.0 }
+
+  - id: fire_wind_spread
+    description: "Tile on fire during wind — should spread to neighbors"
+    biome: forest
+    grid: [8, 8]
+    terrain_tiles:
+      - { pos: [4, 4], type: dense_forest }
+      - { pos: [5, 4], type: dense_forest }
+      - { pos: [4, 5], type: dense_forest }
+    initial_elements:
+      - { pos: [4, 4], fire: 0.5, water: 0.0, cold: 0.0, wind: 0.0 }
+    weather: wind
+
+  - id: fog_with_watchtower
+    description: "Map fully fogged except watchtower reveal radius"
+    biome: forest
+    grid: [20, 20]
+    fog: all_hidden
+    placements:
+      - { building: watchtower, pos: [10, 10] }
+    # Watchtower reveals radius 8 → tiles within 8 of [10,10] become Visible
+
+  # ── Edge Cases ──
+
+  - id: hazard_no_buildings
+    description: "Hazard triggers on empty area — tile enhancement still applies"
+    biome: volcanic
+    grid: [10, 10]
+    hazard_zones:
+      - { type: eruption, center: [5, 5], radius: 3, next_event_tick: 50 }
+    placements: []
+
+  - id: sacrifice_outside_hazard
+    description: "Sacrifice altar NOT in any hazard zone — should have no effect"
+    biome: volcanic
+    grid: [16, 16]
+    hazard_zones:
+      - { type: eruption, center: [12, 12], radius: 3, next_event_tick: 200 }
+    placements:
+      - { building: sacrifice_altar, pos: [3, 3] }  # far from hazard
+
+  - id: overlapping_hazards
+    description: "Two hazard zones overlap on same tiles"
+    biome: volcanic
+    grid: [16, 16]
+    hazard_zones:
+      - { type: eruption, center: [6, 6], radius: 3, next_event_tick: 100 }
+      - { type: ash_storm, center: [8, 6], radius: 4, next_event_tick: 120 }
+
+  - id: building_on_fogged_tile
+    description: "Attempt to place building on hidden tile — should reject"
+    biome: forest
+    grid: [20, 20]
+    fog: all_hidden
+    terrain_tiles:
+      - { pos: [15, 15], type: iron_vein }
+    placements:
+      - { building: iron_miner, pos: [15, 15] }  # should fail — tile hidden
+
+  - id: cold_freezes_water_source
+    description: "Cold snap freezes water source tile — pump stops working"
+    biome: ocean
+    grid: [10, 10]
+    terrain_tiles:
+      - { pos: [5, 5], type: water_source }
+    initial_elements:
+      - { pos: [5, 5], fire: 0.0, water: 0.5, cold: 0.6, wind: 0.0 }
+    placements:
+      - { building: water_pump, pos: [5, 5] }
+
+  - id: desert_no_water_no_wood
+    description: "Desert biome — wood and water are null quality, must synthesize"
+    biome: desert
+    grid: [16, 16]
+    terrain_tiles:
+      - { pos: [5, 5], type: sand }
+      - { pos: [8, 8], type: copper_vein }
+      - { pos: [10, 5], type: mana_node }
+    # No water_source or forest terrain — player must import or synthesize

@@ -1,0 +1,93 @@
+# Magnum Opus — Opus Tree Template
+# Resolves White Spot #10 from ECS.md: opus tree generation algorithm.
+# Strategy: template-based with biome-specific substitution.
+# Template defines structure (node count, branch points), biome fills in resources.
+
+# Generation algorithm:
+# 1. Pick template based on difficulty
+# 2. For each node, substitute resource from biome's available pool
+# 3. Scale rates based on difficulty multiplier
+# 4. Attach mini-opus branches at branch_points
+
+templates:
+  - id: standard
+    description: "Default opus tree — 5 main nodes, 3 branch points"
+    difficulty: medium
+    main_path:
+      - { node: 1, tier: 1, rate_base: 2.0, resource_class: raw_solid }
+      - { node: 2, tier: 1, rate_base: 1.5, resource_class: processed_solid }
+      - { node: 3, tier: 2, rate_base: 1.0, resource_class: t2_processed }
+      - { node: 4, tier: 2, rate_base: 0.8, resource_class: organic }
+      - { node: 5, tier: 3, rate_base: 0.5, resource_class: opus_final }
+    branch_points: [1, 3, 5]      # mini-opus branches attach here
+    final_node:
+      type: simultaneous_sustain
+      description: "Sustain ALL main-path rates simultaneously"
+      sustain_ticks: 600           # 30 sec at 20 TPS
+
+  - id: short
+    description: "Shorter tree for easier runs — 3 main nodes, 2 branches"
+    difficulty: easy
+    main_path:
+      - { node: 1, tier: 1, rate_base: 1.5, resource_class: raw_solid }
+      - { node: 2, tier: 1, rate_base: 1.0, resource_class: processed_solid }
+      - { node: 3, tier: 2, rate_base: 0.5, resource_class: t2_processed }
+    branch_points: [1, 3]
+    final_node:
+      type: simultaneous_sustain
+      sustain_ticks: 400
+
+  - id: grand
+    description: "Long tree for hard runs — 7 main nodes, 5 branches"
+    difficulty: hard
+    main_path:
+      - { node: 1, tier: 1, rate_base: 3.0, resource_class: raw_solid }
+      - { node: 2, tier: 1, rate_base: 2.0, resource_class: processed_solid }
+      - { node: 3, tier: 1, rate_base: 1.5, resource_class: organic }
+      - { node: 4, tier: 2, rate_base: 1.5, resource_class: t2_processed }
+      - { node: 5, tier: 2, rate_base: 1.0, resource_class: t2_organic }
+      - { node: 6, tier: 3, rate_base: 0.8, resource_class: t3_processed }
+      - { node: 7, tier: 3, rate_base: 0.5, resource_class: opus_final }
+    branch_points: [1, 2, 4, 5, 7]
+    final_node:
+      type: simultaneous_sustain
+      sustain_ticks: 800
+
+# Resource class → concrete resource mapping per biome
+# Used during tree generation to pick actual resources
+resource_class_pool:
+  raw_solid:
+    forest: [iron_ore, copper_ore, stone]
+    volcanic: [iron_ore, stone]
+    desert: [copper_ore, stone]
+    ocean: [iron_ore, copper_ore, stone]
+
+  t2_raw:
+    volcanic: [obsidian_shard]
+    desert: [mana_crystal]
+    forest: [mana_crystal]
+    ocean: [obsidian_shard]
+
+  processed_solid:
+    forest: [iron_bar, copper_bar, plank, wood]
+    volcanic: [iron_bar, copper_bar]
+    desert: [copper_bar, iron_bar]
+    ocean: [iron_bar, copper_bar, plank]
+
+  organic:
+    all: [hide, herbs, bone_meal]
+
+  t2_processed:
+    forest: [steel_plate, treated_leather, refined_crystal]
+    volcanic: [steel_plate, refined_crystal]
+    desert: [refined_crystal, steel_plate]
+    ocean: [steel_plate, treated_leather, potion_base]
+
+  t2_organic:
+    all: [venom, sinew]
+
+  t3_processed:
+    all: [runic_alloy, arcane_essence]
+
+  opus_final:
+    all: [opus_ingot]

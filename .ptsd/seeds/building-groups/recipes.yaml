@@ -1,0 +1,396 @@
+# Magnum Opus — Recipes
+# All production recipes. Each recipe is bound to a building type.
+# inputs/outputs: resource_id → amount per cycle
+# duration_ticks: ticks per cycle (at 20 TPS: 60 ticks = 3 sec, 120 = 6 sec)
+# output_type: manifold (default) | inventory (building → player Inventory)
+# tier_required: minimum tier to unlock (defaults to building's tier)
+# side_effect: optional non-resource effect
+
+recipes:
+  # ══════════════════════════════════════
+  # T1 Extraction (output only, no inputs)
+  # ══════════════════════════════════════
+
+  - id: mine_iron
+    building: iron_miner
+    inputs: {}
+    outputs: { iron_ore: 1 }
+    duration_ticks: 60
+
+  - id: mine_copper
+    building: copper_miner
+    inputs: {}
+    outputs: { copper_ore: 1 }
+    duration_ticks: 60
+
+  - id: quarry_stone
+    building: stone_quarry
+    inputs: {}
+    outputs: { stone: 2 }
+    duration_ticks: 80
+
+  - id: pump_water
+    building: water_pump
+    inputs: {}
+    outputs: { water: 2 }
+    duration_ticks: 40
+
+  # ══════════════════════════════════════
+  # T1 Synthesis
+  # ══════════════════════════════════════
+
+  - id: smelt_iron
+    building: iron_smelter
+    inputs: { iron_ore: 2 }
+    outputs: { iron_bar: 1 }
+    duration_ticks: 120
+
+  - id: smelt_copper
+    building: copper_smelter
+    inputs: { copper_ore: 2 }
+    outputs: { copper_bar: 1 }
+    duration_ticks: 120
+
+  - id: grow_trees
+    building: tree_farm
+    inputs: { water: 3 }
+    outputs: { wood: 2 }
+    duration_ticks: 180
+
+  - id: cut_planks
+    building: sawmill
+    inputs: { wood: 1 }
+    outputs: { plank: 2 }
+    duration_ticks: 80
+
+  # ══════════════════════════════════════
+  # T1 Mall (output → Inventory)
+  # ══════════════════════════════════════
+
+  - id: build_iron_miner
+    building: constructor
+    inputs: { iron_bar: 3, plank: 1 }
+    outputs: { iron_miner: 1 }
+    output_type: inventory
+    duration_ticks: 300
+
+  - id: build_copper_miner
+    building: constructor
+    inputs: { copper_bar: 3, plank: 1 }
+    outputs: { copper_miner: 1 }
+    output_type: inventory
+    duration_ticks: 300
+
+  - id: build_stone_quarry
+    building: constructor
+    inputs: { iron_bar: 2, stone: 2 }
+    outputs: { stone_quarry: 1 }
+    output_type: inventory
+    duration_ticks: 250
+
+  - id: build_wind_turbine
+    building: constructor
+    inputs: { iron_bar: 2, copper_bar: 1 }
+    outputs: { wind_turbine: 1 }
+    output_type: inventory
+    duration_ticks: 200
+
+  - id: build_watchtower
+    building: constructor
+    inputs: { plank: 4, stone: 2 }
+    outputs: { watchtower: 1 }
+    output_type: inventory
+    duration_ticks: 250
+
+  - id: build_imp_camp
+    building: constructor
+    inputs: { iron_bar: 2, stone: 3 }
+    outputs: { imp_camp: 1 }
+    output_type: inventory
+    duration_ticks: 400
+
+  - id: build_breeding_pen
+    building: constructor
+    inputs: { iron_bar: 1, stone: 2, copper_bar: 1 }
+    outputs: { breeding_pen: 1 }
+    output_type: inventory
+    duration_ticks: 350
+
+  - id: build_water_pump
+    building: constructor
+    inputs: { iron_bar: 2, copper_bar: 1 }
+    outputs: { water_pump: 1 }
+    output_type: inventory
+    duration_ticks: 200
+
+  - id: build_iron_smelter
+    building: constructor
+    inputs: { stone: 4, copper_bar: 1 }
+    outputs: { iron_smelter: 1 }
+    output_type: inventory
+    duration_ticks: 300
+
+  - id: build_copper_smelter
+    building: constructor
+    inputs: { stone: 4, iron_bar: 1 }
+    outputs: { copper_smelter: 1 }
+    output_type: inventory
+    duration_ticks: 300
+
+  - id: build_tree_farm
+    building: constructor
+    inputs: { iron_bar: 2, stone: 3 }
+    outputs: { tree_farm: 1 }
+    output_type: inventory
+    duration_ticks: 350
+
+  - id: build_sawmill
+    building: constructor
+    inputs: { iron_bar: 2, stone: 2 }
+    outputs: { sawmill: 1 }
+    output_type: inventory
+    duration_ticks: 250
+
+  - id: build_water_wheel
+    building: constructor
+    inputs: { iron_bar: 3, copper_bar: 2 }
+    outputs: { water_wheel: 1 }
+    output_type: inventory
+    duration_ticks: 300
+
+  - id: build_sacrifice_altar
+    building: constructor
+    inputs: { stone: 3, copper_bar: 1 }
+    outputs: { sacrifice_altar: 1 }
+    output_type: inventory
+    duration_ticks: 200
+
+  - id: build_toolmaker
+    building: constructor
+    inputs: { iron_bar: 4, copper_bar: 3, stone: 2 }
+    outputs: { toolmaker: 1 }
+    output_type: inventory
+    tier_required: 2
+    duration_ticks: 500
+
+  - id: build_assembler
+    building: constructor
+    inputs: { iron_bar: 3, copper_bar: 3, stone: 4 }
+    outputs: { assembler: 1 }
+    output_type: inventory
+    tier_required: 2
+    duration_ticks: 600
+
+  # Note: constructor itself is in starting kits only — not buildable.
+  # This is intentional: you get exactly 1 constructor, the rest of mall
+  # is toolmaker + assembler (built by constructor at T2).
+
+  # ══════════════════════════════════════
+  # T1 Combat (organic pipeline)
+  # ══════════════════════════════════════
+
+  - id: imp_raid
+    building: imp_camp
+    inputs: { iron_bar: 1, herbs: 2 }
+    outputs: { hide: 3, bone_meal: 1 }
+    duration_ticks: 120
+    side_effect: territory_protection
+
+  - id: breed_stock
+    building: breeding_pen
+    inputs: { water: 2, herbs: 1 }
+    outputs: { hide: 1, herbs: 2 }
+    duration_ticks: 180
+
+  # ══════════════════════════════════════
+  # T2 Extraction
+  # ══════════════════════════════════════
+
+  - id: drill_obsidian
+    building: obsidian_drill
+    inputs: {}
+    outputs: { obsidian_shard: 1 }
+    duration_ticks: 100
+
+  - id: extract_mana
+    building: mana_extractor
+    inputs: {}
+    outputs: { mana_crystal: 1 }
+    duration_ticks: 120
+
+  - id: siphon_lava
+    building: lava_siphon
+    inputs: {}
+    outputs: { lava: 3 }
+    duration_ticks: 60
+
+  # ══════════════════════════════════════
+  # T2 Synthesis
+  # ══════════════════════════════════════
+
+  - id: forge_steel
+    building: steel_forge
+    inputs: { iron_bar: 2, copper_bar: 1 }
+    outputs: { steel_plate: 1 }
+    duration_ticks: 200
+
+  - id: tan_leather
+    building: tannery
+    inputs: { hide: 3, herbs: 1 }
+    outputs: { treated_leather: 1 }
+    duration_ticks: 160
+
+  - id: refine_crystal
+    building: crystal_refinery
+    inputs: { mana_crystal: 2, water: 1 }
+    outputs: { refined_crystal: 1 }
+    duration_ticks: 240
+
+  - id: brew_potion_base
+    building: alchemist_lab
+    inputs: { water: 2, herbs: 3 }
+    outputs: { potion_base: 2 }
+    duration_ticks: 200
+
+  # ══════════════════════════════════════
+  # T2 Mall
+  # ══════════════════════════════════════
+
+  - id: build_obsidian_drill
+    building: toolmaker
+    inputs: { steel_plate: 2, obsidian_shard: 1 }
+    outputs: { obsidian_drill: 1 }
+    output_type: inventory
+    duration_ticks: 400
+
+  - id: build_mana_extractor
+    building: toolmaker
+    inputs: { steel_plate: 2, refined_crystal: 1 }
+    outputs: { mana_extractor: 1 }
+    output_type: inventory
+    duration_ticks: 400
+
+  - id: build_war_lodge
+    building: assembler
+    inputs: { steel_plate: 3, treated_leather: 2, plank: 4 }
+    outputs: { war_lodge: 1 }
+    output_type: inventory
+    duration_ticks: 500
+
+  - id: build_trader
+    building: assembler
+    inputs: { steel_plate: 2, refined_crystal: 1, treated_leather: 1 }
+    outputs: { trader: 1 }
+    output_type: inventory
+    duration_ticks: 450
+
+  - id: build_steel_forge
+    building: toolmaker
+    inputs: { steel_plate: 1, iron_bar: 3, stone: 2 }
+    outputs: { steel_forge: 1 }
+    output_type: inventory
+    duration_ticks: 400
+
+  - id: build_tannery
+    building: toolmaker
+    inputs: { iron_bar: 2, treated_leather: 1 }
+    outputs: { tannery: 1 }
+    output_type: inventory
+    duration_ticks: 350
+
+  - id: build_crystal_refinery
+    building: toolmaker
+    inputs: { steel_plate: 2, mana_crystal: 1 }
+    outputs: { crystal_refinery: 1 }
+    output_type: inventory
+    duration_ticks: 450
+
+  - id: build_alchemist_lab
+    building: assembler
+    inputs: { steel_plate: 2, refined_crystal: 1, stone: 3 }
+    outputs: { alchemist_lab: 1 }
+    output_type: inventory
+    duration_ticks: 500
+
+  - id: build_lava_siphon
+    building: toolmaker
+    inputs: { steel_plate: 2, obsidian_shard: 2 }
+    outputs: { lava_siphon: 1 }
+    output_type: inventory
+    duration_ticks: 400
+
+  - id: build_lava_generator
+    building: assembler
+    inputs: { steel_plate: 3, obsidian_shard: 2, copper_bar: 2 }
+    outputs: { lava_generator: 1 }
+    output_type: inventory
+    duration_ticks: 500
+
+  # ══════════════════════════════════════
+  # T2 Combat
+  # ══════════════════════════════════════
+
+  - id: war_lodge_raid
+    building: war_lodge
+    inputs: { steel_plate: 1, treated_leather: 1, herbs: 2 }
+    outputs: { venom: 2, sinew: 1 }
+    duration_ticks: 160
+    side_effect: territory_protection
+
+  # ══════════════════════════════════════
+  # T3 Synthesis
+  # ══════════════════════════════════════
+
+  - id: forge_runic_alloy
+    building: runic_forge
+    inputs: { steel_plate: 2, mana_crystal: 1, obsidian_shard: 1 }
+    outputs: { runic_alloy: 1 }
+    duration_ticks: 300
+
+  - id: distill_arcane_essence
+    building: arcane_distillery
+    inputs: { refined_crystal: 2, venom: 1, potion_base: 1 }
+    outputs: { arcane_essence: 1 }
+    duration_ticks: 280
+
+  # ══════════════════════════════════════
+  # T3 Opus (final production)
+  # ══════════════════════════════════════
+
+  - id: forge_opus_ingot
+    building: opus_forge
+    inputs: { runic_alloy: 2, arcane_essence: 1 }
+    outputs: { opus_ingot: 1 }
+    duration_ticks: 400
+
+  # ══════════════════════════════════════
+  # T3 Mall
+  # ══════════════════════════════════════
+
+  - id: build_runic_forge
+    building: assembler
+    inputs: { runic_alloy: 2, steel_plate: 3, obsidian_shard: 2 }
+    outputs: { runic_forge: 1 }
+    output_type: inventory
+    duration_ticks: 600
+
+  - id: build_arcane_distillery
+    building: assembler
+    inputs: { runic_alloy: 1, refined_crystal: 3, steel_plate: 2 }
+    outputs: { arcane_distillery: 1 }
+    output_type: inventory
+    duration_ticks: 600
+
+  - id: build_opus_forge
+    building: assembler
+    inputs: { runic_alloy: 4, arcane_essence: 2, steel_plate: 3 }
+    outputs: { opus_forge: 1 }
+    output_type: inventory
+    duration_ticks: 800
+
+  - id: build_mana_reactor
+    building: assembler
+    inputs: { runic_alloy: 3, refined_crystal: 2, steel_plate: 2 }
+    outputs: { mana_reactor: 1 }
+    output_type: inventory
+    duration_ticks: 700

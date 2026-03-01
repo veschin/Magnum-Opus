@@ -1,0 +1,95 @@
+# Magnum Opus — Dashboard Metrics
+# What the efficiency dashboard shows in real-time.
+# Chain visualizer highlights + dashboard graphs.
+
+dashboard:
+  # ── Primary Metrics (always visible) ──
+  primary:
+    - id: energy_balance
+      label: "Energy"
+      type: gauge
+      formula: "totalGen - totalConsumption"
+      unit: "units"
+      color_thresholds:
+        green: "> 0"
+        yellow: "== 0"
+        red: "< 0"
+
+    - id: opus_progress
+      label: "Opus Progress"
+      type: progress_bar
+      formula: "sustained_nodes / total_nodes"
+      unit: "%"
+
+    - id: current_tier
+      label: "Tier"
+      type: badge
+      values: [1, 2, 3]
+
+  # ── Production Rates (per-resource graphs) ──
+  production:
+    - id: resource_rates
+      label: "Production Rates"
+      type: time_series_graph
+      sample_interval_ticks: 20
+      history_window_ticks: 1200   # 60 sec rolling window
+      series_per: resource_type
+      unit: "items/min"
+
+    - id: opus_rate_vs_target
+      label: "Rate vs Milestone Target"
+      type: comparison_bars
+      per: opus_node
+      shows: [current_rate, required_rate]
+
+  # ── Resource Stockpiles ──
+  stockpiles:
+    - id: manifold_levels
+      label: "Group Stockpiles"
+      type: stacked_bar
+      per: group
+      shows: manifold_resources
+      unit: "items"
+
+    - id: inventory_count
+      label: "Building Inventory"
+      type: list
+      shows: building_counts_in_inventory
+
+  # ── Energy Detail ──
+  energy:
+    - id: energy_per_group
+      label: "Energy Allocation"
+      type: pie_chart
+      shows: [group_name, allocated_energy, priority]
+
+    - id: energy_history
+      label: "Energy Over Time"
+      type: time_series_graph
+      sample_interval_ticks: 20
+      history_window_ticks: 2400
+      series: [total_generation, total_consumption]
+
+  # ── Chain Visualizer ──
+  chain_visualizer:
+    - id: group_overlay
+      type: map_overlay
+      shows:
+        - group_boundaries
+        - path_connections
+        - throughput_per_path
+        - bottleneck_highlight       # groups at < 80% capacity = yellow, < 50% = red
+
+    - id: bottleneck_threshold
+      yellow: 0.8                   # < 80% of potential output
+      red: 0.5                      # < 50% of potential output
+
+    - id: flow_direction
+      type: animated_arrows
+      shows: resource_flow_direction_and_amount
+
+# Empty state behavior (PRD edge case):
+empty_state:
+  zero_groups: "No production groups — place buildings to start"
+  zero_energy: "No energy — production halted"
+  run_start: "All metrics show 0, no errors or crashes"

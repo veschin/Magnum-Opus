@@ -1,0 +1,114 @@
+# Magnum Opus — Meta Fixtures
+# Test scenarios for currencies, unlocks, trading, opus multiplier.
+
+fixtures:
+  # ── Happy Path ──
+
+  - id: run_end_scoring
+    description: "Completed run — currencies earned with opus multiplier"
+    run_result:
+      opus_completion: 1.0         # all milestones sustained
+      mini_opus_completed: 2
+      mini_opus_total: 3
+      time_bonus: 0.4             # finished at 60% of max time
+      difficulty: medium
+    mini_opus_rewards:
+      - { currency: gold, amount: 50 }
+      - { currency: knowledge, amount: 60 }
+    # Expected: raw_score = 1.0*0.5 + 0.67*0.3 + 0.4*0.2 = 0.78
+    # Currencies: (50+60) * 1.5 (medium multiplier) = 165 total
+
+  - id: meta_store_purchase
+    description: "Player has enough currency to buy an unlock"
+    meta_state:
+      gold: 250
+      souls: 150
+      knowledge: 50
+    attempted_purchase: extra_starting_turbine  # costs 250 gold
+    # Expected: purchase succeeds, gold → 0
+
+  - id: trader_basic
+    description: "Trader building with iron_ore surplus — converts to gold"
+    grid: [10, 10]
+    placements:
+      - { building: trader, pos: [5, 5] }
+      - { building: wind_turbine, pos: [5, 7] }
+    manifold_preload:
+      group_at: [5, 5]
+      resources: { iron_ore: 10 }
+    # Expected: 10 * 0.5 = 5.0 gold (first trade, no inflation)
+
+  - id: trader_with_inflation
+    description: "Trader that has already traded 50 iron_ore — diminished rate"
+    grid: [10, 10]
+    placements:
+      - { building: trader, pos: [5, 5] }
+      - { building: wind_turbine, pos: [5, 7] }
+    manifold_preload:
+      group_at: [5, 5]
+      resources: { iron_ore: 10 }
+    trader_state:
+      inflation: { iron_ore: 50 }  # 50 units already traded
+    # Expected: rate = 0.5 / (1 + 0.3 * ln(51)) ≈ 0.5 / 2.18 ≈ 0.23 per unit
+
+  - id: unlock_persistence
+    description: "Unlock purchased — persists into new run"
+    meta_state:
+      gold: 0
+      souls: 0
+      knowledge: 0
+      unlocks: [extra_starting_miner]
+    new_run_biome: forest
+    # Expected: starting kit includes base + 1 extra iron_miner
+
+  # ── Edge Cases ──
+
+  - id: abandoned_run
+    description: "Player quits mid-run — 0 currencies earned"
+    run_result:
+      opus_completion: 0.4
+      mini_opus_completed: 1
+      mini_opus_total: 3
+      abandoned: true
+    # Expected: 0 currencies (abandon_currency_multiplier = 0.0)
+
+  - id: all_mini_opus_failed
+    description: "No mini-opus completed — reduced but not zero currency"
+    run_result:
+      opus_completion: 0.8
+      mini_opus_completed: 0
+      mini_opus_total: 4
+      time_bonus: 0.3
+      difficulty: hard
+    # Expected: raw_score > 0 (opus 0.4 + mini 0 + time 0.06 = 0.46)
+    # But failed_run_penalty: 25% of base → very low currency
+
+  - id: insufficient_currency
+    description: "Player tries to buy unlock without enough currency"
+    meta_state:
+      gold: 100
+      souls: 50
+      knowledge: 0
+    attempted_purchase: unlock_volcanic  # costs gold: 200, souls: 100
+    # Expected: purchase fails, currencies unchanged
+
+  - id: lifetime_stats
+    description: "Player can view total lifetime earnings"
+    meta_state:
+      gold: 500
+      souls: 300
+      knowledge: 200
+      lifetime_earned: { gold: 2000, souls: 1500, knowledge: 1000 }
+      lifetime_spent: { gold: 1500, souls: 1200, knowledge: 800 }
+      unlocks: [unlock_volcanic, extra_starting_miner, golden_rune_paths]
+
+  - id: multiple_currency_types_from_trading
+    description: "Trader receives mixed resources — earns different currencies"
+    grid: [10, 10]
+    placements:
+      - { building: trader, pos: [5, 5] }
+      - { building: wind_turbine, pos: [5, 7] }
+    manifold_preload:
+      group_at: [5, 5]
+      resources: { iron_ore: 5, hide: 3, steel_plate: 2 }
+    # Expected: gold from iron_ore (2.5), souls from hide (4.5), knowledge from steel_plate (4.0)

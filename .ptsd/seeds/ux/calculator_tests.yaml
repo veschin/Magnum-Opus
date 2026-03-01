@@ -1,0 +1,124 @@
+# Magnum Opus — Production Calculator Test Pairs
+# Input → expected output for the built-in production calculator.
+# Calculator: "I need X items/min" → required buildings, resources, groups.
+# References recipes and buildings from building-groups seed.
+
+calculator_tests:
+  # ── Simple chains (T1) ──
+
+  - id: iron_bar_2_per_min
+    description: "Produce 2 iron bars per minute"
+    input:
+      target_resource: iron_bar
+      target_rate_per_min: 2.0
+      current_tier: 1
+      biome: forest
+    expected_output:
+      buildings_needed:
+        iron_miner: 4              # 2 iron_ore per miner per 60 ticks (1/min at 20 TPS)
+                                   # recipe: 2 iron_ore → 1 iron_bar, need 4 ore/min → 4 miners
+        iron_smelter: 2            # each smelter: 1 bar per 120 ticks = 0.5/min at 20TPS → need 2
+      energy_needed: 40            # 4*5 + 2*10 = 40
+      energy_buildings:
+        wind_turbine: 2            # 2*20 = 40
+
+  - id: plank_4_per_min
+    description: "Produce 4 planks per minute"
+    input:
+      target_resource: plank
+      target_rate_per_min: 4.0
+      current_tier: 1
+      biome: forest
+    expected_output:
+      buildings_needed:
+        water_pump: 2              # tree_farm needs 3 water per 180 ticks
+        tree_farm: 2               # 2 wood per 180 ticks each
+        sawmill: 2                 # 2 planks per 80 ticks each
+      energy_needed: 34            # 2*3 + 2*8 + 2*6 = 34
+
+  # ── Multi-step chains (T2) ──
+
+  - id: steel_plate_1_per_min
+    description: "Produce 1 steel plate per minute"
+    input:
+      target_resource: steel_plate
+      target_rate_per_min: 1.0
+      current_tier: 2
+      biome: forest
+    expected_output:
+      buildings_needed:
+        iron_miner: 4              # need 2 iron_bar → 4 iron_ore → 4 miners
+        copper_miner: 2            # need 1 copper_bar → 2 copper_ore → 2 miners
+        iron_smelter: 2            # 2 iron_ore → 1 iron_bar, need 2/min
+        copper_smelter: 1          # 2 copper_ore → 1 copper_bar, need 1/min
+        steel_forge: 1             # 1 steel per 200 ticks
+      energy_needed: 68            # 4*5+2*5+2*10+1*10+1*18 = 68
+
+  # ── Organic chain (requires combat group) ──
+
+  - id: treated_leather_1_per_min
+    description: "Produce 1 treated leather per minute — needs organic hide"
+    input:
+      target_resource: treated_leather
+      target_rate_per_min: 1.0
+      current_tier: 2
+      biome: forest
+    expected_output:
+      buildings_needed:
+        imp_camp: 1                # produces hide
+        breeding_pen: 1            # produces herbs
+        tannery: 1                 # 3 hide + 1 herbs → 1 treated_leather
+      energy_needed: 30            # 10+8+12 = 30
+      notes:
+        - "Requires combat group for organic resources (hide, herbs)"
+        - "Combat group needs iron_bar + herbs as input"
+
+  # ── Edge Cases ──
+
+  - id: tier_locked_building
+    description: "Request T3 resource while at T1 — shows tier requirement"
+    input:
+      target_resource: runic_alloy
+      target_rate_per_min: 1.0
+      current_tier: 1
+      biome: forest
+    expected_output:
+      error: tier_locked
+      message: "Requires T3 — runic_forge not available at current tier"
+      required_tier: 3
+
+  - id: unavailable_in_biome
+    description: "Request resource needing biome-absent terrain"
+    input:
+      target_resource: obsidian_shard
+      target_rate_per_min: 1.0
+      current_tier: 2
+      biome: forest                # no obsidian_vein in forest
+    expected_output:
+      error: biome_unavailable
+      message: "obsidian_shard requires obsidian_vein terrain (not available in forest biome)"
+
+  - id: zero_rate
+    description: "Request 0 items/min — no buildings needed"
+    input:
+      target_resource: iron_bar
+      target_rate_per_min: 0.0
+      current_tier: 1
+      biome: forest
+    expected_output:
+      buildings_needed: {}
+      energy_needed: 0
+
+  - id: high_quality_variant
+    description: "Calculator accounts for biome quality bonus"
+    input:
+      target_resource: iron_bar
+      target_rate_per_min: 2.0
+      current_tier: 1
+      biome: volcanic              # iron_ore is HIGH quality here
+    expected_output:
+      buildings_needed:
+        iron_miner: 4              # same count but quality bonus applies to output
+        iron_smelter: 2
+      notes:
+        - "HIGH quality iron_ore in volcanic biome — smelting outputs 1.0 + quality_bonus"

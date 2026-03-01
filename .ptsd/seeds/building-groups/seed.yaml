@@ -1,0 +1,6 @@
+feature: building-groups
+files:
+  - resource_types.yaml
+  - building_types.yaml
+  - recipes.yaml
+  - fixtures.yaml

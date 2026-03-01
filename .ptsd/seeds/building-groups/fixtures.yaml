@@ -1,0 +1,244 @@
+# Magnum Opus — Building Groups Fixtures
+# Ready-made world snapshots for BDD scenarios.
+# Only SETUP here — no assertions. Assertions belong in Gherkin (BDD stage).
+# terrain_tiles: pre-defined terrain for extraction buildings
+# energy: separate list to make power available
+
+fixtures:
+  # ── Happy Path ──
+
+  - id: single_miner
+    description: "One iron miner on iron vein — simplest possible group"
+    grid: [10, 10]
+    terrain_tiles:
+      - { pos: [3, 3], type: iron_vein }
+    placements:
+      - { building: iron_miner, pos: [3, 3] }
+
+  - id: single_miner_powered
+    description: "One iron miner + one wind turbine adjacent — minimal powered production"
+    grid: [10, 10]
+    terrain_tiles:
+      - { pos: [3, 3], type: iron_vein }
+    placements:
+      - { building: iron_miner, pos: [3, 3] }
+      - { building: wind_turbine, pos: [4, 3] }
+
+  - id: linear_chain
+    description: "Miner → Smelter → Constructor in a row — basic production chain"
+    grid: [10, 10]
+    terrain_tiles:
+      - { pos: [3, 3], type: iron_vein }
+    placements:
+      - { building: iron_miner, pos: [3, 3] }
+      - { building: iron_smelter, pos: [4, 3] }
+      - { building: constructor, pos: [5, 3] }  # 2x2, occupies [5,3],[6,3],[5,4],[6,4]
+      - { building: wind_turbine, pos: [3, 4] }
+
+  - id: dual_miners
+    description: "Two iron miners adjacent — identical buildings chain"
+    grid: [10, 10]
+    terrain_tiles:
+      - { pos: [3, 3], type: iron_vein }
+      - { pos: [4, 3], type: iron_vein }
+    placements:
+      - { building: iron_miner, pos: [3, 3] }
+      - { building: iron_miner, pos: [4, 3] }
+
+  - id: full_iron_bar_chain
+    description: "2 miners + smelter + wind turbine — complete iron bar production"
+    grid: [10, 10]
+    terrain_tiles:
+      - { pos: [3, 3], type: iron_vein }
+      - { pos: [3, 4], type: iron_vein }
+    placements:
+      - { building: iron_miner, pos: [3, 3] }
+      - { building: iron_miner, pos: [3, 4] }
+      - { building: iron_smelter, pos: [4, 3] }
+      - { building: wind_turbine, pos: [4, 4] }
+
+  - id: two_groups_separate
+    description: "Two independent groups — iron miners and copper miners with gap"
+    grid: [12, 10]
+    terrain_tiles:
+      - { pos: [2, 3], type: iron_vein }
+      - { pos: [3, 3], type: iron_vein }
+      - { pos: [8, 3], type: copper_vein }
+      - { pos: [9, 3], type: copper_vein }
+    placements:
+      - { building: iron_miner, pos: [2, 3] }
+      - { building: iron_miner, pos: [3, 3] }
+      - { building: copper_miner, pos: [8, 3] }
+      - { building: copper_miner, pos: [9, 3] }
+
+  - id: mall_group
+    description: "Constructor + sawmill — mall producing buildings"
+    grid: [10, 10]
+    placements:
+      - { building: constructor, pos: [3, 3] }  # 2x2
+      - { building: sawmill, pos: [5, 3] }
+      - { building: wind_turbine, pos: [5, 4] }
+
+  - id: combat_group
+    description: "Imp camp + breeding pen — organic resource pipeline"
+    grid: [10, 10]
+    placements:
+      - { building: imp_camp, pos: [3, 3] }       # 2x2
+      - { building: breeding_pen, pos: [5, 3] }   # 2x2
+      - { building: wind_turbine, pos: [3, 5] }
+
+  - id: multi_type_group
+    description: "Iron miner + smelter + sawmill — mixed-type group with manifold"
+    grid: [10, 10]
+    terrain_tiles:
+      - { pos: [3, 3], type: iron_vein }
+    placements:
+      - { building: iron_miner, pos: [3, 3] }
+      - { building: iron_smelter, pos: [4, 3] }
+      - { building: sawmill, pos: [5, 3] }
+      - { building: wind_turbine, pos: [4, 4] }
+
+  # ── Edge Cases ──
+
+  - id: empty_grid
+    description: "No buildings — baseline for empty state"
+    grid: [10, 10]
+    placements: []
+
+  - id: diagonal_pair
+    description: "Two miners diagonal — should NOT form a group (only cardinal adjacency)"
+    grid: [10, 10]
+    terrain_tiles:
+      - { pos: [3, 3], type: iron_vein }
+      - { pos: [4, 4], type: iron_vein }
+    placements:
+      - { building: iron_miner, pos: [3, 3] }
+      - { building: iron_miner, pos: [4, 4] }
+
+  - id: bridge_building
+    description: "Three in a row — middle is bridge. Removing middle should split into 2 groups"
+    grid: [10, 10]
+    terrain_tiles:
+      - { pos: [3, 3], type: iron_vein }
+      - { pos: [5, 3], type: iron_vein }
+    placements:
+      - { building: iron_miner, pos: [3, 3] }
+      - { building: iron_smelter, pos: [4, 3] }
+      - { building: iron_miner, pos: [5, 3] }
+
+  - id: three_way_merge
+    description: "Building placed between two existing groups — should merge into one"
+    grid: [10, 10]
+    terrain_tiles:
+      - { pos: [3, 3], type: iron_vein }
+      - { pos: [5, 3], type: copper_vein }
+    placements:
+      - { building: iron_miner, pos: [3, 3] }
+      # gap at [4, 3] — place a smelter here to merge
+      - { building: copper_miner, pos: [5, 3] }
+    pending_placement:
+      - { building: iron_smelter, pos: [4, 3] }
+
+  - id: synthesis_no_supply
+    description: "Smelter with energy but no input resources — should idle"
+    grid: [10, 10]
+    placements:
+      - { building: iron_smelter, pos: [3, 3] }
+      - { building: wind_turbine, pos: [3, 4] }
+
+  - id: production_no_energy
+    description: "Miner + smelter but no energy building — should produce at zero speed"
+    grid: [10, 10]
+    terrain_tiles:
+      - { pos: [3, 3], type: iron_vein }
+    placements:
+      - { building: iron_miner, pos: [3, 3] }
+      - { building: iron_smelter, pos: [4, 3] }
+
+  - id: single_building_group
+    description: "One building = group of 1 — should have receivers/senders"
+    grid: [10, 10]
+    terrain_tiles:
+      - { pos: [5, 5], type: iron_vein }
+    placements:
+      - { building: iron_miner, pos: [5, 5] }
+
+  - id: l_shaped_group
+    description: "4 buildings in L-shape — all should form one group"
+    grid: [10, 10]
+    terrain_tiles:
+      - { pos: [3, 3], type: iron_vein }
+      - { pos: [4, 3], type: iron_vein }
+      - { pos: [3, 4], type: iron_vein }
+    placements:
+      - { building: iron_miner, pos: [3, 3] }
+      - { building: iron_miner, pos: [4, 3] }
+      - { building: iron_miner, pos: [3, 4] }
+      - { building: iron_smelter, pos: [3, 5] }
+
+  # ── Invalid / Boundary ──
+
+  - id: placement_out_of_bounds
+    description: "Attempt to place building outside grid — should reject"
+    grid: [5, 5]
+    terrain_tiles:
+      - { pos: [10, 10], type: iron_vein }
+    placements:
+      - { building: iron_miner, pos: [10, 10] }
+
+  - id: placement_on_occupied
+    description: "Two buildings on same tile — second should reject"
+    grid: [10, 10]
+    terrain_tiles:
+      - { pos: [3, 3], type: iron_vein }
+    placements:
+      - { building: iron_miner, pos: [3, 3] }
+      - { building: iron_smelter, pos: [3, 3] }
+
+  - id: placement_wrong_terrain
+    description: "Miner placed on grass instead of iron vein — should reject"
+    grid: [10, 10]
+    terrain_tiles:
+      - { pos: [3, 3], type: grass }
+    placements:
+      - { building: iron_miner, pos: [3, 3] }
+
+  - id: placement_tier_locked
+    description: "T2 building placed while still at T1 — should reject"
+    grid: [10, 10]
+    tier: 1
+    terrain_tiles:
+      - { pos: [3, 3], type: obsidian_vein }
+    placements:
+      - { building: obsidian_drill, pos: [3, 3] }
+
+  - id: footprint_overlap
+    description: "2x2 building overlapping with 1x1 — should reject second"
+    grid: [10, 10]
+    placements:
+      - { building: constructor, pos: [3, 3] }  # occupies [3,3],[4,3],[3,4],[4,4]
+      - { building: iron_smelter, pos: [4, 3] }  # conflicts with constructor footprint
+
+  - id: last_building_removed
+    description: "Group with single building — removing it destroys the group"
+    grid: [10, 10]
+    terrain_tiles:
+      - { pos: [5, 5], type: iron_vein }
+    placements:
+      - { building: iron_miner, pos: [5, 5] }
+    pending_removal:
+      - { pos: [5, 5] }
+
+  - id: manifold_overflow
+    description: "Miner producing faster than smelter consumes — manifold accumulates"
+    grid: [10, 10]
+    terrain_tiles:
+      - { pos: [3, 3], type: iron_vein }
+      - { pos: [3, 4], type: iron_vein }
+      - { pos: [3, 5], type: iron_vein }
+    placements:
+      - { building: iron_miner, pos: [3, 3] }
+      - { building: iron_miner, pos: [3, 4] }
+      - { building: iron_miner, pos: [3, 5] }
+      - { building: iron_smelter, pos: [4, 3] }
+      - { building: wind_turbine, pos: [4, 4] }

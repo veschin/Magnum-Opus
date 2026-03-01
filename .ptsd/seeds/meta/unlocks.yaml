@@ -1,0 +1,91 @@
+# Magnum Opus — Permanent Unlocks
+# Bought with meta-currencies, persist across runs.
+# Categories: biomes, starting_bonuses, building_pool, cosmetic
+
+unlocks:
+  # ── Biome Unlocks ──
+  - id: unlock_volcanic
+    category: biome
+    name: "Ashen Caldera"
+    description: "Unlock the volcanic biome for run selection"
+    cost: { gold: 200, souls: 100 }
+    prerequisite: null
+
+  - id: unlock_desert
+    category: biome
+    name: "Shifting Sands"
+    description: "Unlock the desert biome for run selection"
+    cost: { gold: 150, knowledge: 150 }
+    prerequisite: null
+
+  - id: unlock_ocean
+    category: biome
+    name: "Drowned Reach"
+    description: "Unlock the ocean biome for run selection"
+    cost: { gold: 100, souls: 100, knowledge: 100 }
+    prerequisite: null
+
+  # ── Starting Bonuses ──
+  - id: extra_starting_miner
+    category: starting_bonus
+    name: "Prospector's Gift"
+    description: "Start each run with 1 extra miner"
+    cost: { gold: 300 }
+    prerequisite: null
+
+  - id: extra_starting_turbine
+    category: starting_bonus
+    name: "Wind Blessing"
+    description: "Start each run with 1 extra wind turbine"
+    cost: { gold: 250 }
+    prerequisite: null
+
+  - id: starting_combat
+    category: starting_bonus
+    name: "War Preparation"
+    description: "Start each run with an imp camp and breeding pen"
+    cost: { souls: 400 }
+    prerequisite: null
+
+  - id: starting_watchtower_upgrade
+    category: starting_bonus
+    name: "Far Sight"
+    description: "Starting watchtower reveals 50% more area"
+    cost: { knowledge: 300 }
+    prerequisite: null
+
+  # ── Building Pool ──
+  - id: unlock_alchemist_lab
+    category: building_pool
+    name: "Alchemist's Secret"
+    description: "Alchemist Lab available from T2 start"
+    cost: { knowledge: 500 }
+    prerequisite: null
+
+  - id: unlock_mana_reactor
+    category: building_pool
+    name: "Arcane Power"
+    description: "Mana Reactor blueprint available at T3"
+    cost: { knowledge: 600, souls: 200 }
+    prerequisite: null
+
+  # ── Cosmetic ──
+  - id: golden_rune_paths
+    category: cosmetic
+    name: "Golden Runes"
+    description: "Rune paths glow gold instead of blue"
+    cost: { gold: 100 }
+    prerequisite: null
+
+  - id: spectral_minions
+    category: cosmetic
+    name: "Spectral Workers"
+    description: "Minions appear as ghostly spirits"
+    cost: { souls: 150 }
+    prerequisite: null
+
+# Total currency sinks (approximate):
+# Gold: 200+150+100+300+250+100 = 1100
+# Souls: 100+100+400+200+150 = 950
+# Knowledge: 150+100+300+500+600 = 1650
+# Designed to require ~5-10 successful runs to unlock everything
