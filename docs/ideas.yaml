@@ -182,12 +182,14 @@
   status: locked
 
 - id: 14
-  idea: "Creature trading/economy"
+  idea: "Trading = surplus resources → meta-currency with inflation"
   desc: >
-    In water biome: catch lots of fish, sell for resources you lack.
-    Each biome has abundant creature-resources that can offset weaknesses.
-    Creates biome-specific economic strategies.
-  system: creatures
+    Trader building accepts surplus resources and converts to meta-currency.
+    Exchange rate has inflation — the more you trade the same resource,
+    the worse the rate. Satisfactory-ticket model.
+    Creates biome-specific economic strategies: abundant resource in biome
+    can be traded for meta-currency to offset weaknesses across runs.
+  system: meta
   tier: B
   type: mechanic
   status: locked
@@ -238,12 +240,14 @@
   status: locked
 
 - id: 18
-  idea: "Encounter-gated progression"
+  idea: "Nest-gated tier progression"
   desc: >
-    Player doesn't get full building freedom from start.
-    Encounters (mini-opuses) unlock new possibilities mid-run.
-    Forces adaptation and prevents "solve the whole run in first 5 minutes".
-    Like AtS glades but less scary — you roughly know what to expect.
+    Tiers unlock by clearing creature nests on the map.
+    T1→T2: clear a T1 nest. T2→T3: clear a T2 nest.
+    T3 unlocks EXTRACT mode on cleared nests (2x consumption → bonus output).
+    All recipes unlock immediately at tier transition.
+    Buildings auto-upgrade on tier unlock (no demolish+rebuild).
+    Forces exploration and combat engagement as natural progression.
   system: progression
   tier: A
   type: mechanic
@@ -452,6 +456,76 @@
     Placed anywhere on valid ground. Another type of resource node, but artificial.
     Adds strategic layer: which resources to extract vs synthesize.
   system: production
+  tier: A
+  type: mechanic
+  status: locked
+
+# =============================================================================
+# NEW IDEAS (from ECS architecture session)
+# =============================================================================
+
+- id: 37
+  idea: "Fog of war with watchtowers"
+  desc: >
+    Map starts hidden. Watchtower buildings reveal cells in radius
+    (like Factorio radar). Player cannot place buildings on hidden tiles.
+    Simulation runs regardless of visibility — world is independent.
+    Encourages exploration and strategic watchtower placement.
+  system: world
+  tier: A
+  type: mechanic
+  status: locked
+
+- id: 38
+  idea: "Minion carry (pre-path transport)"
+  desc: >
+    Before rune paths are built, minions auto-carry resources between
+    nearby groups. Slow throughput, short range. Automatic fallback
+    when no path connects two groups. Enables bootstrap gameplay
+    without requiring path placement as first action.
+  system: transport
+  tier: A
+  type: mechanic
+  status: locked
+
+- id: 39
+  idea: "Building inventory (Mall → Inventory → placement)"
+  desc: >
+    Buildings are produced by Mall group and go to a global Inventory.
+    Player places buildings from Inventory. Resources never enter inventory —
+    they stay in manifolds and travel only via paths/minion carry.
+    Starting kit provides free buildings for first extraction + Mall.
+    Breaks circular dependency: need buildings to produce, need resources
+    to build, need buildings to transport.
+  system: production
+  tier: A
+  type: mechanic
+  status: locked
+
+- id: 40
+  idea: "Biome-contextual resource quality"
+  desc: >
+    Resource quality depends on biome, not intrinsic property.
+    Same resource has different quality per biome.
+    Example: rotten wood = NORMAL in forest, HIGH in undead biome.
+    Regular wood = HIGH in forest, unavailable in undead.
+    Recipes specify quality requirements. 2 levels: NORMAL / HIGH.
+    Creates biome-specific strategy without extra mechanics.
+  system: production
+  tier: A
+  type: mechanic
+  status: locked
+
+- id: 41
+  idea: "Creature nests as tier gates"
+  desc: >
+    Creature nests on map serve as tier gate encounters.
+    T1→T2: clear a T1 nest via combat group pressure.
+    T2→T3: clear a T2 nest (requires stronger combat chains).
+    T3 unlocks EXTRACT button on cleared nests: 2x consumption → bonus output.
+    Hostile factions = required targets for some mini-opus.
+    Non-hostile creatures can be killed/extracted by player choice.
+  system: creatures
   tier: A
   type: mechanic
   status: locked
