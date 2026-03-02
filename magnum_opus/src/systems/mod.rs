@@ -32,3 +32,22 @@ pub use terrain::{
 };
 pub mod trading;
 pub use trading::trading_system;
+pub mod progression;
+pub use progression::{
+    milestone_check_system,
+    opus_tree_sync_system,
+    run_lifecycle_system,
+    tier_gate_system,
+    building_tier_upgrade_system,
+    mini_opus_system,
+};
+pub mod creatures;
+pub use creatures::{
+    creature_behavior_system,
+    invasive_expansion_system,
+    combat_group_system,
+    nest_clearing_system,
+    combat_pressure_system,
+    creature_loot_system,
+    minion_task_system,
+};

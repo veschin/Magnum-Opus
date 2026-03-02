@@ -18,13 +18,14 @@ pub fn transport_placement_system(
     mut last_result: ResMut<LastDrawPathResult>,
     grid: Res<Grid>,
     transport_tier: Res<TransportTierState>,
-    senders: Query<Entity, With<TransportSender>>,
+    senders: Query<(Entity, &TransportSender)>,
     receivers: Query<Entity, With<TransportReceiver>>,
     mut ev_connected: MessageWriter<PathConnected>,
 ) {
     let cmds: Vec<DrawPathCmd> = transport_cmds.draw_path.drain(..).collect();
     for cmd in cmds {
-        if !senders.iter().any(|e| e == cmd.source_group) {
+        let sender_opt = senders.iter().find(|(e, _)| *e == cmd.source_group);
+        if sender_opt.is_none() {
             last_result.result = Some(DrawPathResult::RejectedNoSender);
             continue;
         }
@@ -52,6 +53,9 @@ pub fn transport_placement_system(
             last_result.result = Some(reason);
             continue;
         }
+        // Derive resource_filter from the source group's TransportSender so that
+        // movement system can correctly match receiver demand by resource type.
+        let resource_filter = sender_opt.and_then(|(_, s)| s.resource);
         let tier = transport_tier.transport_tier as u8;
         let stats = if cmd.is_pipe { TierStats::for_pipe(tier) } else { TierStats::for_path(tier) };
         let kind = if cmd.is_pipe { TransportKind::Pipe } else { TransportKind::RunePath };
@@ -59,7 +63,7 @@ pub fn transport_placement_system(
             kind,
             source_group: cmd.source_group,
             target_group: cmd.target_group,
-            resource_filter: None,
+            resource_filter,
             tier,
             capacity: stats.capacity,
             speed: stats.speed,

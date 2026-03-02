@@ -17,6 +17,14 @@ use crate::systems::terrain::{
     element_interaction_system, weather_tick_system, fog_of_war_system,
     world_placement_system,
 };
+use crate::systems::progression::{
+    milestone_check_system, opus_tree_sync_system, run_lifecycle_system,
+    tier_gate_system, building_tier_upgrade_system, mini_opus_system,
+};
+use crate::systems::creatures::{
+    creature_behavior_system, invasive_expansion_system, combat_group_system,
+    nest_clearing_system, combat_pressure_system, creature_loot_system, minion_task_system,
+};
 
 #[derive(SystemSet, Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Phase {
@@ -26,6 +34,8 @@ pub enum Phase {
     Production,
     Manifold,
     Transport,
+    Progression,
+    Creatures,
     World,
 }
 
@@ -60,6 +70,37 @@ impl Plugin for WorldPlugin {
     }
 }
 
+/// Plugin for creatures & combat simulation systems.
+pub struct CreaturesPlugin;
+
+impl Plugin for CreaturesPlugin {
+    fn build(&self, app: &mut App) {
+        // Ordering: Creatures runs after Transport
+        app.configure_sets(
+            Update,
+            Phase::Transport.before(Phase::Creatures),
+        );
+
+        // Creature events
+        app.add_message::<NestCleared>();
+        app.add_message::<TierUnlockedProgression>();
+
+        // Creature systems
+        app.add_systems(
+            Update,
+            (
+                combat_pressure_system.in_set(Phase::Creatures),
+                combat_group_system.in_set(Phase::Creatures),
+                creature_behavior_system.in_set(Phase::Creatures),
+                invasive_expansion_system.in_set(Phase::Creatures),
+                creature_loot_system.in_set(Phase::Creatures),
+                nest_clearing_system.in_set(Phase::Creatures),
+                minion_task_system.in_set(Phase::Creatures),
+            ),
+        );
+    }
+}
+
 pub struct SimulationPlugin {
     pub grid_width: i32,
     pub grid_height: i32,
@@ -81,6 +122,7 @@ impl Plugin for SimulationPlugin {
                 Phase::Power.before(Phase::Production),
                 Phase::Production.before(Phase::Manifold),
                 Phase::Manifold.before(Phase::Transport),
+                Phase::Transport.before(Phase::Progression),
             ),
         );
 
@@ -94,6 +136,11 @@ impl Plugin for SimulationPlugin {
         app.init_resource::<TransportCommands>();
         app.init_resource::<LastDrawPathResult>();
         app.init_resource::<TransportTierState>();
+        // Progression resources
+        app.init_resource::<OpusTreeResource>();
+        app.init_resource::<ProductionRates>();
+        app.init_resource::<RunConfig>();
+        app.init_resource::<RunState>();
 
         app.add_message::<BuildingPlaced>();
         app.add_message::<BuildingRemoved>();
@@ -103,6 +150,15 @@ impl Plugin for SimulationPlugin {
         app.add_message::<PathConnected>();
         app.add_message::<PathDisconnected>();
         app.add_message::<TierUnlocked>();
+        // Progression events
+        app.add_message::<MilestoneReached>();
+        app.add_message::<MiniOpusCompleted>();
+        app.add_message::<MiniOpusMissed>();
+        app.add_message::<NestCleared>();
+        app.add_message::<TierUnlockedProgression>();
+        app.add_message::<RunWon>();
+        app.add_message::<RunTimeUp>();
+        app.add_message::<RunAbandoned>();
 
         app.add_systems(
             Update,
@@ -114,10 +170,31 @@ impl Plugin for SimulationPlugin {
                 energy_system.in_set(Phase::Power),
                 production_system.in_set(Phase::Production),
                 manifold_system.in_set(Phase::Manifold),
-                transport_placement_system.in_set(Phase::Transport),
-                transport_tier_upgrade_system.in_set(Phase::Transport),
-                transport_movement_system.in_set(Phase::Transport),
+                // Transport: explicit order — destroy first, then place/upgrade, then move
                 transport_destroy_system.in_set(Phase::Transport),
+                transport_placement_system
+                    .after(transport_destroy_system)
+                    .in_set(Phase::Transport),
+                transport_tier_upgrade_system
+                    .after(transport_destroy_system)
+                    .in_set(Phase::Transport),
+                transport_movement_system
+                    .after(transport_placement_system)
+                    .after(transport_tier_upgrade_system)
+                    .in_set(Phase::Transport),
+                // Progression phase systems
+                milestone_check_system.in_set(Phase::Progression),
+                opus_tree_sync_system
+                    .after(milestone_check_system)
+                    .in_set(Phase::Progression),
+                run_lifecycle_system
+                    .after(opus_tree_sync_system)
+                    .in_set(Phase::Progression),
+                tier_gate_system.in_set(Phase::Progression),
+                building_tier_upgrade_system
+                    .after(tier_gate_system)
+                    .in_set(Phase::Progression),
+                mini_opus_system.in_set(Phase::Progression),
             ),
         );
     }

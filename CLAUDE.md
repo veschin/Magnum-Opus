@@ -27,7 +27,7 @@ cd magnum_opus && cargo test <name>    # run single test by name
 - **Simulation-first:** game is a deterministic numerical simulation; rendering is a separate read-only layer
 - **ECS paradigm:** entities (IDs), components (pure data structs), systems (functions), resources (global singletons)
 - **Command sourcing:** player actions are serialized commands, never direct world mutations
-- **Phase-ordered tick pipeline:** 10 phases (Input → World → Creatures → Energy → Production → Transport → Combat → Progression → Cleanup → Meta), strict order, data flows forward
+- **Phase-ordered tick pipeline:** design targets 10 phases (Input → World → Creatures → Energy → Production → Transport → Combat → Progression → Cleanup → Meta); currently 9 implemented in `Phase` enum: Input → Groups → Power → Production → Manifold → Transport → Progression → Creatures → World
 - **Event bus:** systems communicate via events, never direct calls
 - **Data-driven content:** all game content loaded from static data files (RecipeDB, BuildingDB, BiomeDB, etc.)
 
@@ -54,14 +54,26 @@ lib.rs              — plugin registration, phase ordering
 components.rs       — all ECS component structs
 resources.rs        — global singleton resources (Grid, PlacementCommands, EnergyPool)
 events.rs           — event types (BuildingPlaced, BuildingRemoved)
-systems/            — one file per system (placement, groups, power, production, manifold, transport, ux)
+systems/            — one file per system (placement, groups, power, production, manifold, transport, ux, terrain, trading)
 tests/              — BDD tests (one file per feature) + legacy unit tests
 ```
+
+### Plugins (defined in lib.rs)
+
+- **SimulationPlugin** — registers all core systems (placement, groups, energy, production, manifold, transport, progression) with phase ordering, plus core resources (Grid, EnergyPool, Inventory, etc.) and events. Used by most feature tests.
+- **WorldPlugin** — registers world/biome systems (tick, hazards, weather, fog, element interactions) with separate resources (SimTick, CurrentWeather, ActiveBiome). Used by world BDD tests.
+- **CreaturesPlugin** — registers creature & combat systems (behavior, expansion, combat, pressure, nests, loot, minions) in Phase::Creatures. Added on top of SimulationPlugin for creature scenarios.
+
+### Bevy 0.18 API Notes
+
+- Events use `app.add_message::<EventType>()` (not `add_event`)
+- Systems registered with `app.add_systems(Update, system.in_set(Phase::X))`
+- Resources: `app.insert_resource(val)` or `app.init_resource::<Type>()`
 
 ### Test Pattern
 
 ```
-1. Create App with MinimalPlugins + SimulationPlugin (no rendering)
+1. Create App with MinimalPlugins + SimulationPlugin or WorldPlugin
 2. Insert commands/resources
 3. app.update() — runs all systems in phase order
 4. Query components and assert values
@@ -69,11 +81,25 @@ tests/              — BDD tests (one file per feature) + legacy unit tests
 
 No mocks for internal code. Real ECS, real data.
 
-## Features (8 total, all at tests stage, reviews passed ≥7/10)
+## Features (8 total, all at impl stage)
 
 building-groups, transport, world, creatures, progression, meta, energy, ux
 
-Next pipeline step for all features: **implementation** (write-impl).
+All features implemented and reviewed (scores 7-8/10). 384 tests, 0 failures.
+
+### System → Phase Mapping (lib.rs)
+
+| Phase | Systems |
+|-------|---------|
+| Input | placement_system |
+| Groups | group_formation_system, group_priority_system, group_pause_system |
+| Power | energy_system |
+| Production | production_system |
+| Manifold | manifold_system |
+| Transport | transport_destroy_system, transport_placement_system, transport_tier_upgrade_system, transport_movement_system |
+| Progression | milestone_check_system, opus_tree_sync_system, run_lifecycle_system, tier_gate_system, building_tier_upgrade_system, mini_opus_system |
+| Creatures (CreaturesPlugin) | creature_behavior_system, invasive_expansion_system, combat_group_system, combat_pressure_system, nest_clearing_system, creature_loot_system, minion_task_system |
+| World (WorldPlugin) | tick_advance, hazard_warning, hazard_trigger, element_interaction, weather_tick, fog_of_war, world_placement |
 
 ## Design Vocabulary
 
