@@ -3,81 +3,198 @@ tasks:
     feature: ecs-engine
     title: "Run review-impl for ecs-engine feature"
     priority: A
-    status: TODO
-    description: |
-      12/12 integration tests pass (S1-S12). Implementation fixes:
-      - B3: GroupPosition centroid in group_formation_system
-      - B1: production_rates_system capacity-based rate estimation
-      - B4/B11: ungrouped query in group_formation_system
-      - B6: BuildingDestroyed handling in group_formation_system
-      - SimTick single-owner (tick_advance_system skips when RunConfig present)
-      - UX systems .after(Phase::Progression)
-      First review scored 6/10, all 6 issues fixed. Need second review >= 7 to advance.
-    checklist:
-      - "Run: ptsd review ecs-engine impl <score>"
-      - "Verify score >= 7"
-      - "Verify stage advances to impl"
+    status: DONE
 
   - id: T-2
     feature: ecs-engine
     title: "Commit ecs-engine implementation"
     priority: A
-    status: TODO
-    description: |
-      Commit all changes from ecs-engine implementation:
-      - magnum_opus/src/systems/groups.rs (GroupPosition centroid, ungrouped+Footprint query, BuildingDestroyed)
-      - magnum_opus/src/systems/creatures.rs (direct_groups query, ordering)
-      - magnum_opus/src/systems/production.rs (capacity-based rates)
-      - magnum_opus/src/systems/progression.rs (tick_increment_system)
-      - magnum_opus/src/systems/terrain.rs (tick_advance_system conditional)
-      - magnum_opus/src/lib.rs (plugin registration, UX ordering)
-      - magnum_opus/src/tests/ecs_engine_bdd.rs (destroy_building_at fix, warning cleanup)
-      - magnum_opus/src/tests/mod.rs (ecs_engine_bdd module)
-      - .ptsd/ files (feature, state, bdd, seeds)
-    checklist:
-      - "Run: cargo test (396 pass)"
-      - "Run: ptsd validate --agent"
-      - "Commit format: [IMPL] feat: implement ecs-engine cross-feature integration"
+    status: DONE
 
   - id: T-3
     feature: building-groups
     title: "Fix PRD hash regression for 7 implemented features"
-    priority: B
-    status: TODO
-    description: |
-      Adding ecs-engine section to PRD changed the PRD hash. PTSD regressed
-      all 7 other features (building-groups, transport, world, creatures,
-      meta, energy, ux) from impl back to prd stage.
-      All code and tests are intact -- 384 tests pass, impl reviews 7-8/10.
-      The regression is a hash mismatch, not a real code problem.
-      Fix: manually restore state.yaml stages to impl for all 7 features
-      by updating their prd hash to current, or re-run ptsd review prd
-      for each. The PRD content for these features did not change -- only
-      ecs-engine section was ADDED.
-    checklist:
-      - "Verify PRD sections for 7 features are unchanged (only ecs-engine added)"
-      - "Update state.yaml: restore 7 features to stage=impl"
-      - "Or: re-run ptsd review prd for each feature to update hash"
-      - "Verify: ptsd context --agent shows all 8+1 at impl"
+    priority: A
+    status: DONE
 
   - id: T-4
     feature: ecs-engine
-    title: "Evaluate and remove test-specific code path from combat_pressure_system"
+    title: "Remove test-specific dual-path from combat_pressure_system"
     priority: C
     status: TODO
     description: |
-      Review finding: combat_pressure_system has a dual query path --
-      Source 1 (Building+GroupMember+CombatGroup) for gameplay, and
-      Source 2 (CombatGroup+Position on Group entity) for integration tests.
-      Now that B3 is fixed (GroupPosition added by group_formation_system),
-      evaluate whether integration tests can be refactored to use the
-      real building->group path instead of spawning CombatGroup directly
-      on Group entities. If yes, remove the direct_groups query from
-      combat_pressure_system.
-      Note: CombatGroup on Group entity MAY be a valid future pattern.
-      Decide: is this test-only convenience or a real architectural path?
+      combat_pressure_system has Source 2 (CombatGroup+Position on Group entity)
+      added purely for integration tests. Now that B3 is fixed, refactor S4/S5
+      tests to use Building+GroupMember pattern and remove the direct_groups query.
+
+  # ═══════════════════════════════════════════════════════════════════════
+  # Architectural issues discovered by ecs-engine integration testing
+  # ═══════════════════════════════════════════════════════════════════════
+
+  - id: T-5
+    feature: building-groups
+    title: "Per-feature tests bypass real group formation pipeline"
+    priority: B
+    status: TODO
+    description: |
+      Problem: 6 out of 8 feature test files manually spawn Group entities
+      with hardcoded components (Manifold, GroupEnergy, GroupPosition,
+      TransportSender/Receiver) instead of using placement_system ->
+      group_formation_system. This means feature tests never verify that
+      the real pipeline produces correct groups.
+
+      Evidence: B3 (GroupPosition missing) went undetected through 384 tests.
+      Only ecs-engine integration caught it.
+
+      Fix: audit and refactor feature tests (transport_bdd, energy_bdd,
+      progression_bdd, meta_bdd) to use place() + app.update() for group
+      formation, then query the real Group entity instead of spawning manual
+      ones. Keep manual spawn only where testing a specific component in
+      isolation is intentional.
     checklist:
-      - "Check if any gameplay scenario needs CombatGroup on Group entity"
-      - "If no: refactor S4/S5 tests to use Building+GroupMember pattern"
-      - "If no: remove direct_groups query from combat_pressure_system"
-      - "If yes: document why and keep it"
+      - "Audit: which tests manually spawn Group vs use placement pipeline"
+      - "Refactor transport_bdd tests to use real group formation"
+      - "Refactor energy_bdd tests to use real group formation"
+      - "Verify 396 tests still pass after refactor"
+
+  - id: T-6
+    feature: transport
+    title: "Transport never tested end-to-end through real production"
+    priority: B
+    status: TODO
+    description: |
+      Problem: transport_bdd tests pre-seed manifolds with resources and
+      verify cargo movement. But the full chain was never tested:
+      mine iron_ore -> manifold -> transport -> deliver -> smelt iron_bar.
+
+      Evidence: S2 (transport delivery -> iron_bar) was the first test to
+      verify this chain. It exposed that transport + production + energy
+      must all work together for a single iron_bar to appear.
+
+      Fix: add 2-3 transport_bdd scenarios that test real production ->
+      transport -> consumption chains without pre-seeded manifolds.
+      This validates the transport feature actually works in gameplay context.
+    checklist:
+      - "Add scenario: real miners produce -> transport delivers to smelter"
+      - "Add scenario: multi-hop transport chain with real production"
+      - "Verify no pre-seeded manifolds in new scenarios"
+
+  - id: T-7
+    feature: creatures
+    title: "Creature tests are 100% struct construction — zero ECS system runs"
+    priority: A
+    status: TODO
+    description: |
+      Problem: all 52 creature_bdd tests construct CombatGroup/CreatureNest
+      structs and assert field values. Zero tests run app.update(). No system
+      is ever executed. The creature review scored 4/10 for this reason.
+
+      Evidence: S4 (nest clear) was the FIRST test to ever run
+      combat_pressure_system + nest_clearing_system through real ECS.
+      It immediately exposed that combat_pressure_system didn't handle
+      CombatGroup on Group entities, and system ordering was non-deterministic.
+
+      Fix: rewrite creature_bdd tests to use real App with CreaturesPlugin.
+      Test combat_pressure_system, nest_clearing_system, creature_behavior_system
+      with actual entities and app.update() cycles. Struct construction tests
+      can stay as unit tests but should not be the only coverage.
+    checklist:
+      - "Add tests that run combat_pressure_system with real App"
+      - "Add tests that run nest_clearing_system with real App"
+      - "Add tests for creature_behavior_system state transitions"
+      - "Add tests for invasive_expansion with combat group suppression"
+      - "Keep struct tests as unit tests, add system tests alongside"
+
+  - id: T-8
+    feature: world
+    title: "Hazard -> building destruction -> group reform never tested in world_bdd"
+    priority: B
+    status: TODO
+    description: |
+      Problem: world_bdd tests hazard spawning and warning, but never test
+      the full chain: hazard fires -> building destroyed -> group splits ->
+      energy consumption drops. This chain crosses world + building-groups +
+      energy features.
+
+      Evidence: S12 exposed that BuildingDestroyed events were invisible to
+      group_formation_system (B6). The world feature thought it worked, but
+      the downstream effect was broken.
+
+      Fix: add world_bdd scenario that places buildings, triggers hazard,
+      and verifies group reformation and energy recalculation.
+    checklist:
+      - "Add scenario: hazard destroys building, verify group splits"
+      - "Add scenario: verify energy consumption drops after destruction"
+      - "Ensure hazard_trigger_system emits BuildingDestroyed correctly"
+
+  - id: T-9
+    feature: progression
+    title: "Win condition never tested with real production pipeline"
+    priority: B
+    status: TODO
+    description: |
+      Problem: progression_bdd tests milestone_check_system and
+      run_lifecycle_system by manually setting ProductionRates resource.
+      The full chain was never verified: real buildings produce -> rates
+      computed -> milestone sustains -> opus tree syncs -> RunState = Won.
+
+      Evidence: S7 exposed that production_rates_system was reading empty
+      OutputBuffers (B1), so ProductionRates was always zero. Win condition
+      could never trigger through real gameplay.
+
+      Fix: add progression_bdd scenario that uses real buildings,
+      production, and energy to achieve a win condition without manually
+      setting ProductionRates.
+    checklist:
+      - "Add scenario: real production achieves milestone sustain"
+      - "Add scenario: real production triggers RunWon"
+      - "Verify ProductionRates computed from real capacity, not manual set"
+
+  - id: T-10
+    feature: energy
+    title: "Energy crisis cascade never tested across features"
+    priority: C
+    status: TODO
+    description: |
+      Problem: energy_bdd tests energy allocation in isolation. The cascade
+      effect (remove turbine -> production stops -> milestone resets ->
+      opus tree desyncs) was never verified.
+
+      Evidence: S3 was the first test for this cascade. It passed on first
+      try, but only because the individual systems happened to work. If
+      energy_system had a subtle bug in ratio calculation, per-feature
+      tests wouldn't catch the downstream production halt.
+
+      Fix: add energy_bdd scenario that verifies cascade: remove energy
+      source -> all ProductionState.idle_reason = NoEnergy -> manifold
+      stops growing.
+    checklist:
+      - "Add scenario: energy removal halts all production in group"
+      - "Add scenario: re-adding energy source resumes production"
+
+  - id: T-11
+    feature: ecs-engine
+    title: "Document phase ordering invariants in ARCH.md"
+    priority: B
+    status: TODO
+    description: |
+      Problem: phase ordering bugs (SimTick double-write, UX reading stale
+      data, nest_clearing before combat_pressure) were caused by implicit
+      assumptions about system execution order.
+
+      Evidence: 3 out of 8 bugs were ordering issues. The phase pipeline
+      (Input -> Groups -> Power -> Production -> Manifold -> Transport ->
+      Progression -> Creatures -> World) is defined in lib.rs but the
+      CROSS-PLUGIN ordering (SimulationPlugin vs WorldPlugin vs
+      CreaturesPlugin) was undocumented.
+
+      Fix: add section to docs/ARCH.md documenting:
+      - Full phase ordering including cross-plugin constraints
+      - Which system owns which resource (SimTick, ProductionRates, etc.)
+      - Event lifetime: which phase emits, which phase consumes
+      - Rule: every resource must have exactly one writer per tick
+    checklist:
+      - "Document full phase ordering with cross-plugin constraints"
+      - "Document resource ownership (one writer per tick rule)"
+      - "Document event emission -> consumption phase mapping"
+      - "Add to Critical Invariants section"
