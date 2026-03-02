@@ -1,25 +1,25 @@
 features:
   - id: building-groups
     title: 
-    status: in-progress
+    status: implemented
   - id: transport
     title: 
-    status: in-progress
+    status: implemented
   - id: world
     title: 
-    status: 
+    status: implemented
   - id: creatures
     title: 
-    status: in-progress
+    status: implemented
   - id: progression
     title: 
-    status: in-progress
+    status: implemented
   - id: meta
     title: 
-    status: in-progress
+    status: implemented
   - id: energy
     title: 
-    status: in-progress
+    status: implemented
   - id: ux
     title: 
-    status: in-progress
+    status: implemented

@@ -1,6 +1,6 @@
 features:
   building-groups:
-    stage: tests
+    stage: impl
     hashes:
       bdd: ac50a20bea4f888ab698a4be6eaff032395fb5142c6eddb2ce7bef308d0d4216
       seed: bff60b73d4268d59a5765c131f4bc9636a3cbd68cb5b88cbdab4c281aaa31da6
@@ -10,6 +10,9 @@ features:
       bdd:
         score: 8
         at: "2026-03-01T23:10:39.588433099+03:00"
+      impl:
+        score: 8
+        at: "2026-03-02T08:43:50.81303719+03:00"
       prd:
         score: 9
         at: "0001-01-01T00:00:00Z"
@@ -22,7 +25,7 @@ features:
     tests:
       - .ptsd/bdd/building-groups.feature::magnum_opus/src/tests/building_groups_bdd.rs
   creatures:
-    stage: tests
+    stage: impl
     hashes:
       bdd: 6fffc33b1088310569728752c8409e226be8fa48a327cb7c8ca9f0ec0a43e060
       seed: e4fcf5e33b213e96a635d6cdb4b43df197faae7cac1c602f2b6bef226b507cae
@@ -32,6 +35,9 @@ features:
       bdd:
         score: 8
         at: "0001-01-01T00:00:00Z"
+      impl:
+        score: 8
+        at: "2026-03-02T08:43:50.815144866+03:00"
       prd:
         score: 9
         at: "0001-01-01T00:00:00Z"
@@ -44,7 +50,7 @@ features:
     tests:
       - .ptsd/bdd/creatures/creatures.feature::magnum_opus/src/tests/creatures_bdd.rs
   energy:
-    stage: tests
+    stage: impl
     hashes:
       bdd: bb75f0a2a675d0334506df54ecb67c9bab0de7d225a8a3fb2692fdb548f9c23e
       seed: 80c6a29d15bdbcb00787ee0c0a1eccb4408555618735a562b0e5bc3d50bef9de
@@ -54,6 +60,9 @@ features:
       bdd:
         score: 8
         at: "0001-01-01T00:00:00Z"
+      impl:
+        score: 8
+        at: "2026-03-02T08:43:50.817010609+03:00"
       prd:
         score: 9
         at: "0001-01-01T00:00:00Z"
@@ -66,7 +75,7 @@ features:
     tests:
       - .ptsd/bdd/energy/energy.feature::magnum_opus/src/tests/energy_bdd.rs
   meta:
-    stage: tests
+    stage: impl
     hashes:
       bdd: ea8724a47b3c6bd859ccae75ff5ed0b0191eabab59998f827928e34b5879a5e5
       seed: 8b78855903488f70011ff627bff4b71363d79cb6a50408065fb89e0a956527da
@@ -76,6 +85,9 @@ features:
       bdd:
         score: 8
         at: "0001-01-01T00:00:00Z"
+      impl:
+        score: 7
+        at: "2026-03-02T08:43:50.816422813+03:00"
       prd:
         score: 8
         at: "0001-01-01T00:00:00Z"
@@ -88,7 +100,7 @@ features:
     tests:
       - .ptsd/bdd/meta/meta.feature::magnum_opus/src/tests/meta_bdd.rs
   progression:
-    stage: tests
+    stage: impl
     hashes:
       bdd: d5c058de93fb45d8401d11546d2e1ab1a25bb621b472b03829b30ec81d5a7330
       seed: 9eb8147821484a6cd1cfc1d92be1bbc04db476d99567f777174a56bb0a31d775
@@ -98,6 +110,9 @@ features:
       bdd:
         score: 8
         at: "0001-01-01T00:00:00Z"
+      impl:
+        score: 8
+        at: "2026-03-02T08:43:50.815799219+03:00"
       prd:
         score: 9
         at: "0001-01-01T00:00:00Z"
@@ -110,7 +125,7 @@ features:
     tests:
       - .ptsd/bdd/progression/progression.feature::magnum_opus/src/tests/progression_bdd.rs
   transport:
-    stage: tests
+    stage: impl
     hashes:
       bdd: 9a5b37fb125db29c35742e69eaaa0ae51396b9ccf231d4a1956da764d53aeb0b
       seed: 8e5db75c294ce7951569860102b4f61096f0c223f44b9701cafc182124e35312
@@ -120,6 +135,9 @@ features:
       bdd:
         score: 7
         at: "0001-01-01T00:00:00Z"
+      impl:
+        score: 8
+        at: "2026-03-02T08:43:50.813784421+03:00"
       prd:
         score: 9
         at: "0001-01-01T00:00:00Z"
@@ -132,7 +150,7 @@ features:
     tests:
       - .ptsd/bdd/transport/transport.feature::magnum_opus/src/tests/transport_bdd.rs
   ux:
-    stage: tests
+    stage: impl
     hashes:
       bdd: 499021a2c1e22a6637917d79058f859e30ad7b4f17afa938dc957fc8aef1b686
       seed: db2697407ff703c2dee6af434badcd76d163187ab372474f94cccc0b35d4883a
@@ -142,6 +160,9 @@ features:
       bdd:
         score: 7
         at: "0001-01-01T00:00:00Z"
+      impl:
+        score: 7
+        at: "2026-03-02T08:43:50.817670262+03:00"
       prd:
         score: 8
         at: "0001-01-01T00:00:00Z"
@@ -154,7 +175,7 @@ features:
     tests:
       - .ptsd/bdd/ux/ux.feature::magnum_opus/src/tests/ux_bdd.rs
   world:
-    stage: tests
+    stage: impl
     hashes:
       bdd: 2551a55f080a45f9687411afc56a159e19f55a7952899512f57bfc36f7201aff
       seed: 389ca1603942d519de9eded952f00a1c892125b3a8dabcacccce770ba530dc7c
@@ -164,6 +185,9 @@ features:
       bdd:
         score: 9
         at: "0001-01-01T00:00:00Z"
+      impl:
+        score: 7
+        at: "2026-03-02T08:43:50.814472979+03:00"
       prd:
         score: 8
         at: "0001-01-01T00:00:00Z"
