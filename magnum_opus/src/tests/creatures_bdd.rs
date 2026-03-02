@@ -1694,3 +1694,401 @@ fn killed_creature_drops_loot_into_nearest_combat_group_manifold() {
 
     // CreatureKilled event emission verified at impl stage
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ECS System-Level Tests
+//
+// The tests below run actual ECS systems via app.update().
+// They use App::new() + MinimalPlugins + SimulationPlugin + CreaturesPlugin.
+// ═══════════════════════════════════════════════════════════════════════════
+
+use bevy::prelude::*;
+use crate::components::{
+    Building, BuildingType, CombatGroup as CG,
+    CombatPressure, Creature,
+    Group, GroupMember, InvasiveData, Manifold,
+    Position, TerritoryData,
+    GroupEnergy, EnergyPriority, GroupPosition,
+};
+use crate::resources::{TierState, FogMap};
+use crate::{SimulationPlugin, CreaturesPlugin};
+
+fn creatures_app() -> App {
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins);
+    app.add_plugins(SimulationPlugin { grid_width: 20, grid_height: 20 });
+    app.add_plugins(CreaturesPlugin);
+    // Reveal all fog so placement never blocks
+    app.world_mut().resource_mut::<FogMap>().reveal_all(20, 20);
+    app
+}
+
+/// ECS — combat_pressure_system accumulates DPS from ImpCamp building into nearby nest.
+///
+/// Setup: group entity at (3,3), ImpCamp building with GroupMember pointing to that group,
+///        nest at (5,3) with territory_radius=5 and strength=999 (won't clear).
+/// After 1 tick: nest CombatPressure.value should equal effective_protection_dps() of the camp.
+#[test]
+fn ecs_combat_pressure_accumulates_on_nearby_nest() {
+    let mut app = creatures_app();
+
+    // Spawn group entity with a Position — needed by combat_pressure_system
+    let group_entity = app.world_mut().spawn((
+        Group,
+        Manifold::default(),
+        GroupEnergy { demand: 5.0, allocated: 10.0, priority: EnergyPriority::Medium },
+        GroupPosition { x: 3, y: 3 },
+        Position { x: 3, y: 3 },
+    )).id();
+
+    // ImpCamp building with supply_ratio=1.0 → effective_protection_dps = 3.0
+    let combat_group = CG {
+        building_kind: CombatBuildingKind::ImpCamp,
+        base_organic_rate: 1.0,
+        base_protection_radius: 6.0,
+        protection_dps: 3.0,
+        breach_threshold: 0.3,
+        supply_ratio: 1.0,
+        max_minions: 4,
+        output_multiplier: 1.0,
+        consumption_multiplier: 1.0,
+    };
+    let expected_dps = combat_group.effective_protection_dps();
+
+    app.world_mut().spawn((
+        Building { building_type: BuildingType::ImpCamp },
+        Position { x: 3, y: 3 },
+        GroupMember { group_id: group_entity },
+        combat_group,
+    ));
+
+    // Nest at (5,3): distance 2 from group at (3,3), within territory_radius 5
+    let nest_entity = app.world_mut().spawn((
+        CreatureNest {
+            nest_id: NestId::ForestWolfDen,
+            biome: BiomeTag::Forest,
+            tier: 1,
+            hostility: NestHostility::Hostile,
+            strength: 999.0, // high strength — won't clear on first tick
+            territory_radius: 5.0,
+            cleared: false,
+            extracting: false,
+            loot_on_clear: Default::default(),
+        },
+        Position { x: 5, y: 3 },
+        CombatPressure { value: 0.0 },
+    )).id();
+
+    app.update();
+
+    let pressure = app.world().entity(nest_entity).get::<CombatPressure>().unwrap().value;
+    assert!(
+        pressure > 0.0,
+        "combat_pressure must be positive after 1 tick; got {pressure}"
+    );
+    assert!(
+        (pressure - expected_dps).abs() < 0.001,
+        "combat_pressure should equal effective_protection_dps={expected_dps}, got {pressure}"
+    );
+}
+
+/// ECS — nest_clearing_system clears nest and advances TierState when pressure > strength.
+///
+/// Setup: nest with strength=1.0 and pre-seeded CombatPressure.value=100.0 (already exceeds strength).
+/// After 1 tick: nest.cleared=true, TierState.current_tier=2 (from 1).
+#[test]
+fn ecs_nest_clearing_clears_nest_and_advances_tier() {
+    let mut app = creatures_app();
+
+    // Pre-seed pressure above strength — no need for combat buildings here
+    let nest_entity = app.world_mut().spawn((
+        CreatureNest {
+            nest_id: NestId::ForestWolfDen,
+            biome: BiomeTag::Forest,
+            tier: 1,
+            hostility: NestHostility::Hostile,
+            strength: 1.0,
+            territory_radius: 5.0,
+            cleared: false,
+            extracting: false,
+            loot_on_clear: Default::default(),
+        },
+        Position { x: 5, y: 5 },
+        CombatPressure { value: 100.0 }, // far exceeds strength=1.0
+    )).id();
+
+    let tier_before = app.world().resource::<TierState>().current_tier;
+    assert_eq!(tier_before, 1, "TierState starts at 1");
+
+    app.update();
+
+    let nest = app.world().entity(nest_entity).get::<CreatureNest>().unwrap();
+    assert!(nest.cleared, "nest must be cleared after pressure > strength");
+
+    let tier_after = app.world().resource::<TierState>().current_tier;
+    assert_eq!(tier_after, 2, "TierState advances to 2 after hostile nest cleared");
+}
+
+/// ECS — creature_behavior_system transitions Ambient creature to Fleeing when health is low.
+///
+/// Setup: Ambient creature with health=5, max_health=30, flee_threshold=0.5 (so ratio=0.17 < 0.5).
+/// After 1 tick: creature.state == Fleeing.
+#[test]
+fn ecs_creature_behavior_ambient_flees_below_threshold() {
+    let mut app = creatures_app();
+
+    let creature_entity = app.world_mut().spawn((
+        Creature {
+            species: CreatureSpecies::ForestDeer,
+            archetype: CreatureArchetype::Ambient,
+            biome: BiomeTag::Forest,
+            health: 5.0,
+            max_health: 30.0,
+            state: CreatureStateKind::Idle,
+        },
+        AmbientData {
+            wander_range: 6.0,
+            home_x: 3,
+            home_y: 3,
+            flee_threshold: 0.5,
+        },
+        Position { x: 3, y: 3 },
+    )).id();
+
+    app.update();
+
+    let state = app.world().entity(creature_entity).get::<Creature>().unwrap().state;
+    assert_eq!(
+        state,
+        CreatureStateKind::Fleeing,
+        "Ambient creature with health ratio < flee_threshold must be in Fleeing state"
+    );
+}
+
+/// ECS — creature_behavior_system keeps Ambient creature Wandering when health is above threshold.
+///
+/// Setup: Ambient creature with health=25, max_health=30, flee_threshold=0.5 (ratio=0.83 > 0.5).
+/// After 1 tick: creature.state == Wandering (from Idle).
+#[test]
+fn ecs_creature_behavior_ambient_wanders_above_threshold() {
+    let mut app = creatures_app();
+
+    let creature_entity = app.world_mut().spawn((
+        Creature {
+            species: CreatureSpecies::ForestDeer,
+            archetype: CreatureArchetype::Ambient,
+            biome: BiomeTag::Forest,
+            health: 25.0,
+            max_health: 30.0,
+            state: CreatureStateKind::Idle,
+        },
+        AmbientData {
+            wander_range: 6.0,
+            home_x: 3,
+            home_y: 3,
+            flee_threshold: 0.5,
+        },
+        Position { x: 3, y: 3 },
+    )).id();
+
+    app.update();
+
+    let state = app.world().entity(creature_entity).get::<Creature>().unwrap().state;
+    assert_eq!(
+        state,
+        CreatureStateKind::Wandering,
+        "Ambient creature with health ratio > flee_threshold must be Wandering"
+    );
+}
+
+/// ECS — invasive_expansion_system expands territory when no combat group suppresses.
+///
+/// Setup: Invasive creature at (10,10), no combat groups anywhere.
+///        TerritoryData.radius starts at 4.0, expansion_rate=0.02.
+/// After 1 tick: radius = 4.02.
+#[test]
+fn ecs_invasive_expansion_grows_when_not_suppressed() {
+    let mut app = creatures_app();
+
+    let creature_entity = app.world_mut().spawn((
+        Creature {
+            species: CreatureSpecies::ForestVineCreeper,
+            archetype: CreatureArchetype::Invasive,
+            biome: BiomeTag::Forest,
+            health: 40.0,
+            max_health: 40.0,
+            state: CreatureStateKind::Idle,
+        },
+        TerritoryData {
+            center_x: 10,
+            center_y: 10,
+            radius: 4.0,
+            attack_dps: 0.0,
+        },
+        InvasiveData {
+            expansion_rate: 0.02,
+            spawn_children_at_radius: 8.0,
+            child_spawn_rate: 0.01,
+        },
+        Position { x: 10, y: 10 },
+    )).id();
+
+    app.update();
+
+    let territory = app.world().entity(creature_entity).get::<TerritoryData>().unwrap();
+    assert!(
+        (territory.radius - 4.02).abs() < 0.001,
+        "Territory radius must expand by expansion_rate=0.02 when not suppressed; got {}",
+        territory.radius
+    );
+}
+
+/// ECS — invasive_expansion_system does NOT expand territory when a combat group suppresses it.
+///
+/// Setup: Invasive creature at (5,5), combat group at (5,5) with radius=10 and dps=3.0.
+///        TerritoryData.radius starts at 4.0.
+/// After 1 tick: radius stays at 4.0 (suppressed).
+#[test]
+fn ecs_invasive_expansion_suppressed_by_combat_group() {
+    let mut app = creatures_app();
+
+    // Combat group suppresses: effective_protection_radius covers the creature
+    let group_entity = app.world_mut().spawn((
+        Group,
+        Manifold::default(),
+        GroupEnergy { demand: 5.0, allocated: 10.0, priority: EnergyPriority::Medium },
+        GroupPosition { x: 5, y: 5 },
+        Position { x: 5, y: 5 },
+    )).id();
+
+    // ImpCamp building — combat_group_system needs Building+GroupMember+CombatGroup.
+    // The invasive_expansion_system reads combat_groups: Query<(&Position, &CombatGroup)>
+    // which is resolved by combat buildings with CombatGroup on Building entities.
+    // However invasive_expansion_system queries `combat_groups: Query<(&Position, &CombatGroup)>`
+    // directly (not via GroupMember). So we can put CombatGroup on any entity with Position.
+    app.world_mut().spawn((
+        Position { x: 5, y: 5 },
+        CG {
+            building_kind: CombatBuildingKind::ImpCamp,
+            base_organic_rate: 1.0,
+            base_protection_radius: 10.0, // covers creature at (5,5)
+            protection_dps: 3.0,
+            breach_threshold: 0.3,
+            supply_ratio: 1.0,
+            max_minions: 4,
+            output_multiplier: 1.0,
+            consumption_multiplier: 1.0,
+        },
+    ));
+
+    let creature_entity = app.world_mut().spawn((
+        Creature {
+            species: CreatureSpecies::ForestVineCreeper,
+            archetype: CreatureArchetype::Invasive,
+            biome: BiomeTag::Forest,
+            health: 40.0,
+            max_health: 40.0,
+            state: CreatureStateKind::Idle,
+        },
+        TerritoryData {
+            center_x: 5,
+            center_y: 5,
+            radius: 4.0,
+            attack_dps: 0.0,
+        },
+        InvasiveData {
+            expansion_rate: 0.02,
+            spawn_children_at_radius: 8.0,
+            child_spawn_rate: 0.01,
+        },
+        Position { x: 5, y: 5 },
+    )).id();
+
+    app.update();
+
+    let territory = app.world().entity(creature_entity).get::<TerritoryData>().unwrap();
+    assert!(
+        (territory.radius - 4.0).abs() < 0.001,
+        "Territory radius must NOT expand when suppressed by combat group; got {}",
+        territory.radius
+    );
+}
+
+/// ECS — minion_task_system transitions Idle minions to Decorating on each tick.
+#[test]
+fn ecs_minion_idle_transitions_to_decorating() {
+    let mut app = creatures_app();
+
+    let minion_entity = app.world_mut().spawn(Minion {
+        task: MinionTask::Idle,
+    }).id();
+
+    app.update();
+
+    let task = app.world().entity(minion_entity).get::<Minion>().unwrap().task;
+    assert_eq!(
+        task,
+        MinionTask::Decorating,
+        "Idle minion must transition to Decorating after one tick"
+    );
+}
+
+/// ECS — minion_task_system keeps Production minions in Production state.
+#[test]
+fn ecs_minion_production_stays_in_production() {
+    let mut app = creatures_app();
+
+    let minion_entity = app.world_mut().spawn(Minion {
+        task: MinionTask::Production,
+    }).id();
+
+    app.update();
+
+    let task = app.world().entity(minion_entity).get::<Minion>().unwrap().task;
+    assert_eq!(
+        task,
+        MinionTask::Production,
+        "Production minion must remain in Production state after one tick"
+    );
+}
+
+/// ECS — event_born creature despawns after lifetime_ticks via creature_behavior_system.
+///
+/// Setup: EventBorn creature with lifetime_ticks=1, ticks_alive=0.
+/// After 1 tick: entity despawned (state=Despawned, entity removed from world).
+#[test]
+fn ecs_event_born_creature_despawns_after_lifetime() {
+    let mut app = creatures_app();
+
+    let creature_entity = app.world_mut().spawn((
+        Creature {
+            species: CreatureSpecies::EmberWyrm,
+            archetype: CreatureArchetype::EventBorn,
+            biome: BiomeTag::Forest,
+            health: 150.0,
+            max_health: 150.0,
+            state: CreatureStateKind::Idle,
+        },
+        EventBornData {
+            lifetime_ticks: 1,
+            ticks_alive: 0,
+            attack_dps: 12.0,
+        },
+        Position { x: 8, y: 8 },
+    )).id();
+
+    // Before tick: entity exists
+    assert!(
+        app.world().get_entity(creature_entity).is_ok(),
+        "EventBorn creature must exist before tick"
+    );
+
+    app.update();
+
+    // After 1 tick: ticks_alive becomes 1 >= lifetime_ticks=1, so despawn
+    let entity_exists = app.world().get_entity(creature_entity).is_ok();
+    assert!(
+        !entity_exists,
+        "EventBorn creature must be despawned after lifetime_ticks reached"
+    );
+}

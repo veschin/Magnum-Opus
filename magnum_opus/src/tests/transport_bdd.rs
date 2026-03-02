@@ -15,6 +15,7 @@ use bevy::ecs::message::Messages;
 use crate::components::*;
 use crate::events::*;
 use crate::resources::*;
+use crate::systems::placement::PlacementCommands;
 use crate::SimulationPlugin;
 
 fn test_app(w: i32, h: i32) -> App {
@@ -99,6 +100,67 @@ fn spawn_path(
         });
     }
     path_entity
+}
+
+/// Place buildings for two non-adjacent groups via the real pipeline and return
+/// their stable Group entity IDs, found via anchor building's GroupMember.group_id.
+///
+/// Uses real pipeline to produce stable Group entity IDs; transport ports are
+/// still manually attached per test design.
+///
+/// Group A anchor is placed at `(src_x, src_y)`, Group B anchor at `(dst_x, dst_y)`.
+/// The caller must ensure the two anchor positions are NOT adjacent (|dx| > 1 or |dy| > 1)
+/// so the group_formation_system keeps them as separate groups.
+///
+/// After forming groups the function asserts both IDs are distinct to catch the
+/// case where buildings accidentally merged into one group.
+fn place_two_groups_via_pipeline(
+    app: &mut App,
+    src_x: i32,
+    src_y: i32,
+    src_bt: BuildingType,
+    src_recipe: Recipe,
+    dst_x: i32,
+    dst_y: i32,
+    dst_bt: BuildingType,
+    dst_recipe: Recipe,
+) -> (Entity, Entity) {
+    // Reveal fog so placement_system accepts the positions
+    app.world_mut().resource_mut::<FogMap>().reveal_all(50, 20);
+
+    // Place anchor buildings for each group
+    app.world_mut()
+        .resource_mut::<PlacementCommands>()
+        .queue
+        .push((src_bt, src_x, src_y, src_recipe));
+    app.world_mut()
+        .resource_mut::<PlacementCommands>()
+        .queue
+        .push((dst_bt, dst_x, dst_y, dst_recipe));
+
+    // Run one tick so placement_system and group_formation_system execute
+    app.update();
+
+    // Look up group IDs via anchor building's GroupMember component
+    let src_group = {
+        let mut q = app.world_mut().query::<(&Position, &GroupMember)>();
+        q.iter(app.world())
+            .find(|(p, _)| p.x == src_x && p.y == src_y)
+            .map(|(_, m)| m.group_id)
+            .expect("src anchor building should have GroupMember after pipeline tick")
+    };
+    let dst_group = {
+        let mut q = app.world_mut().query::<(&Position, &GroupMember)>();
+        q.iter(app.world())
+            .find(|(p, _)| p.x == dst_x && p.y == dst_y)
+            .map(|(_, m)| m.group_id)
+            .expect("dst anchor building should have GroupMember after pipeline tick")
+    };
+
+    assert_ne!(src_group, dst_group,
+        "src and dst groups must be distinct — check that buildings are non-adjacent");
+
+    (src_group, dst_group)
 }
 
 // ── AC1: Draw rune path between two groups ────────────────────────────────────
@@ -187,6 +249,13 @@ fn draw_pipe_between_two_groups_for_liquid_resource() {
     assert_eq!(conns.len(), 1);
     assert_eq!(conns[0].source_group, src_group);
     assert_eq!(conns[0].target_group, dst_group);
+
+    // Assert: PathConnected event was emitted (BDD: "Then a PathConnected event is emitted")
+    let connected_msgs = app.world().get_resource::<Messages<PathConnected>>().unwrap();
+    let connected_events: Vec<_> = connected_msgs.iter_current_update_messages().collect();
+    assert_eq!(connected_events.len(), 1, "PathConnected event should be emitted for pipe");
+    assert_eq!(connected_events[0].source_group, src_group);
+    assert_eq!(connected_events[0].target_group, dst_group);
 }
 
 /// Scenario: Reject DrawPath when waypoint tile is impassable (lava_source)
@@ -1670,4 +1739,339 @@ fn multi_path_network_delivers_resources_through_chain() {
     let iron_bar_in_c = manifold_c.resources.get(&ResourceType::IronBar).copied().unwrap_or(0.0);
     assert!(iron_bar_in_c > 0.0,
         "iron_bar should be delivered to group C manifold after traversing path B→C");
+}
+
+/// Scenario T-6-e2e-1: Real miner production feeds transport pipeline
+///
+/// BDD: Given a WindTurbine + IronMiner (extraction recipe: [] → [IronOre, 1.0], duration=1)
+///           placed in one group via the real placement pipeline
+///      Given an IronSmelter placed in a separate far-away group
+///      Given a T1 RunePath between the two groups for IronOre transport
+///      When several ticks run to let the miner produce and transport launch cargo
+///      Then IronOre Cargo exists on the path in transit, OR IronOre was delivered to
+///           the destination group manifold
+///      No manifold pre-seeding — ore must be produced by the miner.
+#[test]
+fn real_miner_production_feeds_transport_pipeline() {
+    let mut app = test_app(30, 20);
+    app.world_mut().resource_mut::<TransportTierState>().transport_tier = 1;
+
+    // Reveal fog so placement_system accepts both positions
+    app.world_mut().resource_mut::<FogMap>().reveal_all(30, 20);
+
+    // Place WindTurbine adjacent to IronMiner so they form one group (src group).
+    // IronMiner needs IronVein terrain.
+    app.world_mut().resource_mut::<Grid>().terrain.insert((2, 3), TerrainType::IronVein);
+    app.world_mut()
+        .resource_mut::<PlacementCommands>()
+        .queue
+        .push((
+            BuildingType::IronMiner,
+            2,
+            3,
+            Recipe::simple(vec![], vec![(ResourceType::IronOre, 1.0)], 1),
+        ));
+    app.world_mut()
+        .resource_mut::<PlacementCommands>()
+        .queue
+        .push((
+            BuildingType::WindTurbine,
+            3,
+            3,
+            Recipe::simple(vec![], vec![], 1),
+        ));
+    // Place IronSmelter far away in its own group (dst group)
+    app.world_mut()
+        .resource_mut::<PlacementCommands>()
+        .queue
+        .push((
+            BuildingType::IronSmelter,
+            15,
+            3,
+            Recipe::simple(
+                vec![(ResourceType::IronOre, 2.0)],
+                vec![(ResourceType::IronBar, 1.0)],
+                120,
+            ),
+        ));
+
+    // First tick: placement_system and group_formation_system run
+    app.update();
+
+    // Resolve src_group (group containing miner at (2,3))
+    let src_group = {
+        let mut q = app.world_mut().query::<(&Position, &GroupMember)>();
+        q.iter(app.world())
+            .find(|(p, _)| p.x == 2 && p.y == 3)
+            .map(|(_, m)| m.group_id)
+            .expect("IronMiner should have GroupMember after pipeline tick")
+    };
+    // Resolve dst_group (group containing smelter at (15,3))
+    let dst_group = {
+        let mut q = app.world_mut().query::<(&Position, &GroupMember)>();
+        q.iter(app.world())
+            .find(|(p, _)| p.x == 15 && p.y == 3)
+            .map(|(_, m)| m.group_id)
+            .expect("IronSmelter should have GroupMember after pipeline tick")
+    };
+    assert_ne!(src_group, dst_group, "miner and smelter must be in separate groups");
+
+    // Attach transport ports to the pipeline-produced groups
+    app.world_mut().entity_mut(src_group).insert(
+        TransportSender { resource: Some(ResourceType::IronOre), disconnected: false },
+    );
+    app.world_mut().entity_mut(dst_group).insert(
+        TransportReceiver { resource: Some(ResourceType::IronOre), demand: 5, disconnected: false },
+    );
+
+    // Spawn a T1 RunePath: 6 waypoints from (4,3) to (9,3), connecting src→dst
+    let waypoints: Vec<(i32, i32)> = (4..=9).map(|x| (x, 3)).collect();
+    spawn_path(app.world_mut(), TransportKind::RunePath, src_group, dst_group, waypoints, 1);
+
+    // Run 10 ticks: miner produces IronOre (duration=1 per cycle) and transport launches cargo
+    for _ in 0..10 {
+        app.update();
+    }
+
+    // Assert: IronOre Cargo exists on the path in transit, OR delivered to dst manifold
+    let cargo_on_path = {
+        let mut q = app.world_mut().query::<&Cargo>();
+        q.iter(app.world())
+            .any(|c| c.resource == ResourceType::IronOre)
+    };
+    let iron_ore_in_dst = app.world()
+        .entity(dst_group)
+        .get::<Manifold>()
+        .map(|m| m.resources.get(&ResourceType::IronOre).copied().unwrap_or(0.0))
+        .unwrap_or(0.0);
+
+    assert!(
+        cargo_on_path || iron_ore_in_dst > 0.0,
+        "IronOre must be in transit or delivered to dst manifold after 10 ticks; \
+         in_transit={cargo_on_path}, in_dst={iron_ore_in_dst}. \
+         Check miner production (duration=1, no inputs), energy from adjacent turbine, \
+         and transport pickup from src manifold."
+    );
+}
+
+/// Scenario T-6-e2e-2: Real production of liquid resource piped to consumer group
+///
+/// BDD: Given a WindTurbine + WaterPump (extraction recipe: [] → [Water, 1.0], duration=1)
+///           placed in one group via the real placement pipeline
+///      Given an IronSmelter placed in a separate far-away group
+///      Given a T1 Pipe between the two groups for Water transport
+///      When several ticks run to let the pump produce and transport launch cargo
+///      Then Water Cargo exists on the pipe in transit, OR Water was delivered to
+///           the destination group manifold
+///      No manifold pre-seeding — water must be produced by the pump.
+#[test]
+fn real_production_of_liquid_resource_piped_to_consumer_group() {
+    let mut app = test_app(30, 20);
+    app.world_mut().resource_mut::<TransportTierState>().transport_tier = 1;
+
+    // Reveal fog so placement_system accepts both positions
+    app.world_mut().resource_mut::<FogMap>().reveal_all(30, 20);
+
+    // Place WindTurbine adjacent to WaterPump so they form one group (src group).
+    // WaterPump needs WaterSource terrain.
+    app.world_mut().resource_mut::<Grid>().terrain.insert((2, 3), TerrainType::WaterSource);
+    app.world_mut()
+        .resource_mut::<PlacementCommands>()
+        .queue
+        .push((
+            BuildingType::WaterPump,
+            2,
+            3,
+            Recipe::simple(vec![], vec![(ResourceType::Water, 1.0)], 1),
+        ));
+    app.world_mut()
+        .resource_mut::<PlacementCommands>()
+        .queue
+        .push((
+            BuildingType::WindTurbine,
+            3,
+            3,
+            Recipe::simple(vec![], vec![], 1),
+        ));
+    // Place IronSmelter far away in its own group (dst group)
+    app.world_mut()
+        .resource_mut::<PlacementCommands>()
+        .queue
+        .push((
+            BuildingType::IronSmelter,
+            15,
+            3,
+            Recipe::simple(
+                vec![(ResourceType::Water, 1.0)],
+                vec![(ResourceType::IronBar, 1.0)],
+                120,
+            ),
+        ));
+
+    // First tick: placement_system and group_formation_system run
+    app.update();
+
+    // Resolve src_group (group containing pump at (2,3))
+    let src_group = {
+        let mut q = app.world_mut().query::<(&Position, &GroupMember)>();
+        q.iter(app.world())
+            .find(|(p, _)| p.x == 2 && p.y == 3)
+            .map(|(_, m)| m.group_id)
+            .expect("WaterPump should have GroupMember after pipeline tick")
+    };
+    // Resolve dst_group (group containing smelter at (15,3))
+    let dst_group = {
+        let mut q = app.world_mut().query::<(&Position, &GroupMember)>();
+        q.iter(app.world())
+            .find(|(p, _)| p.x == 15 && p.y == 3)
+            .map(|(_, m)| m.group_id)
+            .expect("IronSmelter should have GroupMember after pipeline tick")
+    };
+    assert_ne!(src_group, dst_group, "pump and smelter must be in separate groups");
+
+    // Attach transport ports to the pipeline-produced groups
+    app.world_mut().entity_mut(src_group).insert(
+        TransportSender { resource: Some(ResourceType::Water), disconnected: false },
+    );
+    app.world_mut().entity_mut(dst_group).insert(
+        TransportReceiver { resource: Some(ResourceType::Water), demand: 5, disconnected: false },
+    );
+
+    // Spawn a T1 Pipe: 6 waypoints from (4,3) to (9,3), connecting src→dst
+    let waypoints: Vec<(i32, i32)> = (4..=9).map(|x| (x, 3)).collect();
+    spawn_path(app.world_mut(), TransportKind::Pipe, src_group, dst_group, waypoints, 1);
+
+    // Run 10 ticks: pump produces Water (duration=1 per cycle) and transport launches cargo
+    for _ in 0..10 {
+        app.update();
+    }
+
+    // Assert: Water Cargo exists on the pipe in transit, OR delivered to dst manifold
+    let cargo_on_pipe = {
+        let mut q = app.world_mut().query::<&Cargo>();
+        q.iter(app.world())
+            .any(|c| c.resource == ResourceType::Water)
+    };
+    let water_in_dst = app.world()
+        .entity(dst_group)
+        .get::<Manifold>()
+        .map(|m| m.resources.get(&ResourceType::Water).copied().unwrap_or(0.0))
+        .unwrap_or(0.0);
+
+    assert!(
+        cargo_on_pipe || water_in_dst > 0.0,
+        "Water must be in transit or delivered to dst manifold after 10 ticks; \
+         in_transit={cargo_on_pipe}, in_dst={water_in_dst}. \
+         Check pump production (duration=1, no inputs), energy from adjacent turbine, \
+         and transport pickup from src manifold via T1 Pipe."
+    );
+}
+
+/// Scenario T-6-3: Full chain mine → transport → smelt → transport → deliver
+///
+/// BDD: Given group A (iron miners via pipeline) sends iron_ore
+///      Given group B (iron smelter via pipeline) receives iron_ore and sends iron_bar
+///      Given group C is the downstream consumer of iron_bar
+///      Given group A manifold is pre-seeded with iron_ore (no mining wait)
+///      Given path A→B has 6 segments (T1, speed=1.0)
+///      Given path B→C has 6 segments (T1, speed=1.0)
+///      When enough ticks run for cargo to arrive at B (~6) and then at C (~6+6)
+///      Then iron_bar is present in group C manifold
+///
+/// Groups A and B are formed via the real ECS pipeline. Transport ports are
+/// manually attached. After ~13+ ticks, iron_bar produced at B must reach C.
+/// The assertion requires actual delivery — no "still in transit" escape hatch.
+#[test]
+fn full_chain_mine_transport_smelt_transport_deliver() {
+    let mut app = test_app(30, 20);
+    app.world_mut().resource_mut::<TransportTierState>().transport_tier = 1;
+
+    // Place group A (iron miner at [2,3]) and group B (smelter at [14,3]) via real pipeline.
+    // Gap of 12 tiles ensures they are never adjacent and form separate groups.
+    let (group_a, group_b) = place_two_groups_via_pipeline(
+        &mut app,
+        2, 3, BuildingType::IronMiner,
+        Recipe::simple(vec![], vec![(ResourceType::IronOre, 1.0)], 60),
+        14, 3, BuildingType::IronSmelter,
+        Recipe::simple(
+            vec![(ResourceType::IronOre, 2.0)],
+            vec![(ResourceType::IronBar, 1.0)],
+            120,
+        ),
+    );
+
+    // Attach transport ports to the pipeline-produced groups
+    app.world_mut().entity_mut(group_a).insert(
+        TransportSender { resource: Some(ResourceType::IronOre), disconnected: false },
+    );
+    app.world_mut().entity_mut(group_b).insert(
+        TransportReceiver { resource: Some(ResourceType::IronOre), demand: 2, disconnected: false },
+    );
+    app.world_mut().entity_mut(group_b).insert(
+        TransportSender { resource: Some(ResourceType::IronBar), disconnected: false },
+    );
+
+    // Group C: downstream consumer of iron_bar (manually spawned, no pipeline)
+    let group_c = spawn_group(
+        app.world_mut(), 24, 3,
+        None, Some(ResourceType::IronBar), 2,
+    );
+
+    // Path A→B: 6 waypoints [[4,3]..[9,3]], T1 speed=1.0
+    let waypoints_ab: Vec<(i32, i32)> = (4..=9).map(|x| (x, 3)).collect();
+    spawn_path(app.world_mut(), TransportKind::RunePath, group_a, group_b, waypoints_ab, 1);
+
+    // Path B→C: 6 waypoints [[16,3]..[21,3]], T1 speed=1.0
+    let waypoints_bc: Vec<(i32, i32)> = (16..=21).map(|x| (x, 3)).collect();
+    spawn_path(app.world_mut(), TransportKind::RunePath, group_b, group_c, waypoints_bc, 1);
+
+    // Pre-seed group A with iron_ore so transport starts immediately
+    // (avoids waiting ~60 ticks for miner production in this integration test)
+    {
+        let mut manifold = app.world_mut()
+            .query::<&mut Manifold>()
+            .get_mut(app.world_mut(), group_a)
+            .unwrap();
+        *manifold.resources.entry(ResourceType::IronOre).or_default() = 10.0;
+    }
+
+    // Run 6 ticks: path A→B length=6, T1 speed=1.0 → cargo reaches B after 6 ticks
+    for _ in 0..6 {
+        app.update();
+    }
+
+    // Verify iron_ore delivered to B
+    let iron_ore_in_b = app.world()
+        .entity(group_b)
+        .get::<Manifold>()
+        .map(|m| m.resources.get(&ResourceType::IronOre).copied().unwrap_or(0.0))
+        .unwrap_or(0.0);
+    assert!(iron_ore_in_b > 0.0,
+        "iron_ore should be delivered to group B after 6 ticks on 6-segment path");
+
+    // Seed group B with iron_bar (simulating smelter output — production phase
+    // would eventually do this, but its 120-tick recipe is too slow for unit test)
+    {
+        let mut manifold = app.world_mut()
+            .query::<&mut Manifold>()
+            .get_mut(app.world_mut(), group_b)
+            .unwrap();
+        manifold.resources.remove(&ResourceType::IronOre);
+        *manifold.resources.entry(ResourceType::IronBar).or_default() = 2.0;
+    }
+
+    // Run 6 more ticks: path B→C length=6, T1 speed=1.0 → cargo reaches C after 6 ticks
+    for _ in 0..6 {
+        app.update();
+    }
+
+    // Assert iron_bar arrived at group C — no "still in transit" escape hatch
+    let bar_in_downstream = app.world()
+        .entity(group_c)
+        .get::<Manifold>()
+        .map(|m| m.resources.get(&ResourceType::IronBar).copied().unwrap_or(0.0))
+        .unwrap_or(0.0);
+    assert!(bar_in_downstream > 0.0,
+        "iron_bar must be delivered to group C manifold after B→C path traversal; \
+         got {bar_in_downstream}. Check transport_movement_system handles B→C delivery.");
 }

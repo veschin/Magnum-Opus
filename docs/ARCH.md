@@ -324,7 +324,230 @@ External dependencies (file I/O, rendering, network) are behind interfaces and n
 
 ---
 
-## 13. Simulation-Render Boundary
+## 13. Phase Ordering Invariants
+
+This section documents the exact phase execution order, cross-plugin constraints, resource ownership
+rules, and event flow guarantees. Three ordering bugs were found during ecs-engine integration
+(SimTick double-write, UX reading stale data, nest_clearing before combat_pressure). These invariants
+prevent that class of bugs from recurring.
+
+### 13.1 Full Phase Execution Order
+
+The `Phase` enum defines 9 phases executed strictly in order each tick:
+
+```
+Phase::Input       → Phase::Groups → Phase::Power    → Phase::Production
+→ Phase::Manifold  → Phase::Transport               → Phase::Progression
+→ Phase::Creatures → Phase::World
+```
+
+`Phase::Creatures` and `Phase::World` are NOT part of `SimulationPlugin`. They belong to separate
+optional plugins layered on top.
+
+#### SimulationPlugin (always present)
+
+Registers and orders the core phases via `configure_sets`:
+
+```
+Input → Groups → Power → Production → Manifold → Transport → Progression
+```
+
+After `Phase::Progression`, the UX systems run unbounded (`.after(Phase::Progression)`):
+
+```
+Progression → [tick_system, dashboard_system, chain_visualizer_system]  (no Phase set)
+```
+
+#### CreaturesPlugin (optional, added on top of SimulationPlugin)
+
+Adds one additional ordering constraint:
+
+```
+Transport → Creatures
+```
+
+Systems in `Phase::Creatures` (with intra-phase ordering):
+
+```
+combat_pressure_system          ─┐
+combat_group_system              ├─ unordered among themselves
+creature_behavior_system         │
+invasive_expansion_system        │
+creature_loot_system             │
+minion_task_system              ─┘
+nest_clearing_system              .after(combat_pressure_system)
+```
+
+`nest_clearing_system` is explicitly `.after(combat_pressure_system)` — pressure must accumulate
+before the clearing check runs. This was one of the ordering bugs found in integration testing.
+
+#### WorldPlugin (independent, does NOT share phases with SimulationPlugin)
+
+`WorldPlugin` does NOT call `configure_sets`. All its systems run in `Update` as a single `.chain()`:
+
+```
+tick_advance_system → hazard_warning_system → hazard_trigger_system
+→ element_interaction_system → weather_tick_system → fog_of_war_system
+→ world_placement_system
+```
+
+`WorldPlugin` uses `Update` directly — it does not participate in the `Phase` enum ordering.
+When used alone (world BDD tests), it is a standalone pipeline.
+When used together with `SimulationPlugin`, these systems run in `Update` alongside the Phase sets,
+and Bevy does not guarantee their position relative to Phase systems.
+
+#### Full per-tick execution timeline (when all three plugins present)
+
+```
+1. Phase::Input        placement_system
+2. Phase::Groups       group_formation_system, group_priority_system, group_pause_system
+3. Phase::Power        energy_system
+4. Phase::Production   production_system
+5. Phase::Manifold     manifold_system → production_rates_system, trading_system
+6. Phase::Transport    transport_destroy_system → transport_placement_system,
+                       transport_tier_upgrade_system → transport_movement_system
+7. Phase::Progression  tick_increment_system → milestone_check_system
+                       → opus_tree_sync_system → run_lifecycle_system
+                       tier_gate_system → building_tier_upgrade_system
+                       mini_opus_system  (unordered relative to tier_gate chain)
+                       NOTE: tier_gate_system has no .after(tick_increment_system) constraint;
+                       it is unordered relative to tick_increment_system within Phase::Progression.
+8. Phase::Creatures    combat_pressure_system, combat_group_system,
+                       creature_behavior_system, invasive_expansion_system,
+                       creature_loot_system, minion_task_system
+                       nest_clearing_system  [after combat_pressure_system]
+9. [after Progression] tick_system, dashboard_system, chain_visualizer_system
+X. WorldPlugin chain   (Update, no Phase — runs at indeterminate position relative to above)
+```
+
+### 13.2 Resource Ownership (Single-Writer-Per-Tick Rule)
+
+Each resource has exactly one system that writes it per tick. Reading it from another system is safe
+only if that system runs in a later phase.
+
+| Resource | Writer System | Phase | Notes |
+|---|---|---|---|
+| `Grid` | `placement_system` | Input | Read-only after Input phase |
+| `Inventory` | `placement_system`, `production_system` | Input / Production | **Designed exception — see note below** |
+| `EnergyPool` | `energy_system` | Power | Written once; read by dashboard (after Progression) |
+| `Manifold` (component) | `manifold_system`, `trading_system`, `combat_group_system` | Manifold / Creatures | **Designed exception — see note below** |
+| `ProductionRates` | `production_rates_system` | Manifold | Read by `milestone_check_system` (Phase::Progression) |
+| `FogMap` | no system writer | — | Read-only at runtime; only `placement_system` reads it for fog checks. Cells are revealed via direct resource mutation outside the tick pipeline (test helpers, starting-kit setup). `fog_of_war_system` (WorldPlugin) writes `WorldTile.visibility` components, NOT this resource. |
+| `PathOccupancy` | `transport_placement_system`, `transport_destroy_system` | Transport | Destroy runs before placement within the phase |
+| `LastDrawPathResult` | `transport_placement_system` | Transport | |
+| `TransportCommands` | drained by `transport_placement_system` / `transport_destroy_system` | Transport | |
+| `OpusTreeResource` | `opus_tree_sync_system` | Progression | Read by `run_lifecycle_system` (same phase, runs after) |
+| `RunConfig.current_tick` | `tick_increment_system` | Progression | |
+| `RunState` | `run_lifecycle_system` | Progression | |
+| `TierState` | `tier_gate_system`, `nest_clearing_system` | Progression / Creatures | Two writers in different phases; Creatures runs after Progression — no same-tick conflict for `tier_gate_system` write; `nest_clearing_system` write is tick N, read by Progression systems in tick N+1 (see event table note) |
+| `SimTick` | `tick_increment_system` (when `RunConfig` present) | Progression | `tick_advance_system` (WorldPlugin) writes it only when `RunConfig` is absent (guard in source) |
+| `SimulationTick` | `tick_system` (UX) | after Progression | Separate resource from `SimTick` |
+| `DashboardState` | `dashboard_system` (UX) | after Progression | Reads final-state of all other resources |
+| `ChainVisualizerState` | `chain_visualizer_system` (UX) | after Progression | Read-only snapshot of groups/paths |
+| `CurrentWeather` | `weather_tick_system` | WorldPlugin chain | |
+| `WorldMap` | `hazard_trigger_system`, `element_interaction_system`, `world_placement_system` | WorldPlugin chain | chained — no conflicts |
+
+**SimTick ownership note:** `SimTick` has a conditional dual-writer guard. `tick_advance_system`
+checks `Option<Res<RunConfig>>` and only writes `SimTick` when `RunConfig` is absent. When
+`SimulationPlugin` is active, `tick_increment_system` owns `SimTick` exclusively. This prevents the
+double-write bug found during integration.
+
+**Inventory dual-writer exception:** `placement_system` (Phase::Input) decrements `Inventory` when
+consuming a building from stock, and `production_system` (Phase::Production) increments it for
+Mall-type buildings (`output_to_inventory = true`). This is a designed exception to the
+single-writer rule. It is safe because Input always runs before Production within a tick — the
+decrement is fully committed before any increment can occur. Inventory integrity (invariant 11) is
+preserved: the net count never goes negative within a tick.
+
+**Manifold multi-writer exception:** Three systems write `Manifold` components across two phases.
+`manifold_system` (Phase::Manifold) performs the primary balancing pass. `trading_system`
+(Phase::Manifold, runs after `manifold_system`) drains manifold resources into meta-currency.
+`combat_group_system` (Phase::Creatures) consumes herbs from the manifold and deposits organic
+output. This is a designed exception: the three writers operate on distinct aspects (balance,
+drain-to-currency, combat I/O) and run in a fixed order guaranteed by phase sequencing and intra-phase
+`.after()` constraints. No two writers race on the same resource entry in the same phase.
+
+### 13.3 Event Emission and Consumption Phase Mapping
+
+Events are value types emitted once and consumed in a later phase within the same tick. Cross-tick
+event persistence does NOT occur.
+
+| Event | Emitter | Emitter Phase | Consumer | Consumer Phase |
+|---|---|---|---|---|
+| `BuildingPlaced` | `placement_system` | Input | `group_formation_system` | Groups |
+| `BuildingRemoved` | not yet implemented in any system (†) | — | `group_formation_system` | Groups |
+| `BuildingDestroyed` | `hazard_trigger_system` (WorldPlugin) | WorldPlugin (‡) | `group_formation_system` | Groups |
+| `SetGroupPriority` | external command / test | — | `group_priority_system` | Groups |
+| `PauseGroup` | external command / test | — | `group_pause_system` | Groups |
+| `ResumeGroup` | external command / test | — | `group_pause_system` | Groups |
+| `PathConnected` | `transport_placement_system` | Transport | render layer / tests | — |
+| `PathDisconnected` | `transport_destroy_system` | Transport | render layer / tests | — |
+| `TierUnlocked` | `transport_tier_upgrade_system` | Transport | render layer / tests | — |
+| `NestCleared` | `nest_clearing_system` | Creatures | `tier_gate_system` | Progression (*) |
+| `TierUnlockedProgression` | `tier_gate_system` | Progression | `building_tier_upgrade_system` | Progression |
+| `TierUnlockedProgression` | `nest_clearing_system` | Creatures | `building_tier_upgrade_system` | Progression (*) |
+| `MilestoneReached` | `milestone_check_system` | Progression | `opus_tree_sync_system` (indirectly via component state) | Progression |
+| `MiniOpusCompleted` | `mini_opus_system` | Progression | render layer / scoring | — |
+| `MiniOpusMissed` | `mini_opus_system` | Progression | render layer / scoring | — |
+| `RunWon` | `run_lifecycle_system` | Progression | render layer / scoring | — |
+| `RunTimeUp` | `run_lifecycle_system` | Progression | render layer / scoring | — |
+| `RunAbandoned` | `run_lifecycle_system` | Progression | render layer / scoring | — |
+| `SacrificeHit` | `hazard_trigger_system` | WorldPlugin | render layer | — |
+| `SacrificeMiss` | `hazard_trigger_system` | WorldPlugin | render layer | — |
+| `PlacementRejected` | `world_placement_system` | WorldPlugin | render layer / tests | — |
+| `HazardTriggered` | `hazard_trigger_system` | WorldPlugin | render layer / tests | — |
+
+(†) **BuildingRemoved emitter not implemented:** No system currently emits `BuildingRemoved`. The
+event type is registered and `group_formation_system` listens for it, but the removal path
+(player-initiated building removal) does not yet have a system that writes this event. Tests
+inject it directly via `world.write_message()`. When a removal system is added, it must run in
+Phase::Input so the event is consumed by `group_formation_system` in the same tick.
+
+(*) **Cross-plugin tick-boundary note (Creatures → Progression):** Both `NestCleared` and
+`TierUnlockedProgression` emitted by `nest_clearing_system` in `Phase::Creatures` share the same
+tick-boundary constraint: their consumers (`tier_gate_system` and `building_tier_upgrade_system`)
+run in `Phase::Progression`, which executes BEFORE `Phase::Creatures` in each tick. Events emitted
+in `Phase::Creatures` at tick N are therefore consumed by Progression systems in tick N+1, not the
+same tick. This is the intended design: nest clearing causes tier advancement one tick later.
+
+(‡) **BuildingDestroyed cross-plugin tick-boundary note:** `BuildingDestroyed` is emitted by
+`hazard_trigger_system` in the WorldPlugin chain, which runs at an indeterminate position relative
+to the Phase-ordered pipeline (see section 13.1). When the WorldPlugin chain runs after
+`Phase::Groups` has already executed, `group_formation_system` (the consumer, in Phase::Groups)
+will not process the event until tick N+1. This is accepted design: hazard-triggered group splits
+take one tick to propagate.
+
+### 13.4 Additions to Critical Invariants
+
+The following invariants extend section 11 with phase-ordering guarantees:
+
+12. **Single-writer-per-tick:** every resource has at most one system writing it per tick, with two
+    designed exceptions. (a) `Inventory`: written by both `placement_system` (Phase::Input,
+    decrement) and `production_system` (Phase::Production, increment); safe because Input precedes
+    Production in every tick. (b) `Manifold`: written by `manifold_system`, `trading_system`, and
+    `combat_group_system` across two phases; safe because each writer operates on a distinct aspect
+    and the phase order is fixed. All other resources must have a single writer. See the ownership
+    table in section 13.2.
+13. **Event ordering guarantee (Phase-ordered pipeline only):** within the Phase-ordered pipeline
+    (SimulationPlugin + CreaturesPlugin), an event emitted in phase X is never consumed in the same
+    tick by a system in phase Y where Y <= X. Events flow strictly forward through phases within a
+    tick; there is no backward event delivery. This guarantee does NOT extend to WorldPlugin
+    systems, which run in `Update` outside the Phase ordering and may emit or consume events at any
+    position relative to the Phase pipeline. Cross-plugin event flows (e.g., `BuildingDestroyed`
+    from WorldPlugin consumed by Phase::Groups) are subject to tick N+1 latency as documented in
+    the event table above.
+14. **UX systems are terminal readers:** `tick_system`, `dashboard_system`, and
+    `chain_visualizer_system` run after all Phase sets. They read final-state resources and never
+    write resources that earlier systems depend on. Adding a UX system that reads mid-tick state
+    (e.g., after Phase::Power but before Phase::Production) is forbidden.
+15. **SimTick single ownership:** `SimTick` is written by `tick_increment_system`
+    (`Phase::Progression`) when `SimulationPlugin` is active. `tick_advance_system`
+    (`WorldPlugin`) contains an explicit guard that skips the write when `RunConfig` is present.
+    This invariant must be preserved when adding new tick-counting systems.
+
+---
+
+## 14. Simulation-Render Boundary
 
 Explicit contract between simulation and presentation layers.
 

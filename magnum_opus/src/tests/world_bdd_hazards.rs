@@ -1,9 +1,11 @@
 use bevy::prelude::*;
 use bevy::ecs::message::Messages;
 use crate::WorldPlugin;
+use crate::SimulationPlugin;
 use crate::components::*;
 use crate::resources::*;
 use crate::events::*;
+use crate::systems::placement::PlacementCommands;
 
 fn setup() -> App {
     let mut app = App::new();
@@ -624,4 +626,202 @@ fn tile_enhancement_expires_after_configured_duration() {
     // Verify removal
     let still_has = app.world().get::<TileEnhancement>(tile_e).is_some();
     assert!(!still_has, "Enhancement must be removed after duration expires");
+}
+
+// ── Cross-feature: Hazard → BuildingDestroyed → Group reform ─────────────────
+//
+// These tests require BOTH WorldPlugin (hazard_trigger_system, BuildingDestroyed)
+// AND SimulationPlugin (group_formation_system, energy_system).
+// They verify the full chain: hazard fires → building despawned → BuildingDestroyed
+// emitted → group_formation_system reacts → groups split → energy consumption drops.
+
+/// Combined app with SimulationPlugin + WorldPlugin.
+/// SimulationPlugin is added first (it owns Phase ordering).
+/// WorldPlugin adds its chained systems separately (Update, no Phase set).
+fn setup_combined(w: i32, h: i32) -> App {
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins);
+    app.add_plugins(SimulationPlugin { grid_width: w, grid_height: h });
+    app.add_plugins(WorldPlugin);
+    app
+}
+
+/// Queue a building via PlacementCommands (legacy queue, bypasses fog/tier checks).
+fn place_building(app: &mut App, bt: BuildingType, x: i32, y: i32) {
+    let recipe = Recipe::simple(vec![], vec![], 1);
+    app.world_mut()
+        .resource_mut::<PlacementCommands>()
+        .queue
+        .push((bt, x, y, recipe));
+}
+
+/// Reveal all grid cells so placement_system does not reject due to fog.
+fn reveal_all_cells(app: &mut App, w: i32, h: i32) {
+    app.world_mut().resource_mut::<FogMap>().reveal_all(w, h);
+}
+
+/// Spawn an eruption hazard that fires at `fire_tick` with radius=0 centered on (cx, cy).
+/// radius=0 means only the exact tile (cx, cy) is in the zone.
+fn point_eruption(cx: i32, cy: i32, fire_tick: u32) -> BiomeHazard {
+    BiomeHazard {
+        hazard_kind: HazardKind::Eruption,
+        center_x: cx, center_y: cy, radius: 0,
+        intensity: 1.0, next_event_tick: fire_tick,
+        warning_ticks: 1, interval_ticks: 10000,
+        interval_variance: 0, warning_issued: false,
+    }
+}
+
+// ── AC: Hazard destroys middle building → group splits into two ───────────────
+
+/// Scenario: Three adjacent buildings form one group (miner-smelter-miner in a row).
+/// An eruption fires on the middle smelter. After the hazard triggers and
+/// group_formation_system processes the BuildingDestroyed event, the original
+/// group must split into two separate groups — one per surviving miner.
+#[test]
+fn hazard_destroys_bridge_building_and_group_splits() {
+    let mut app = setup_combined(10, 10);
+    reveal_all_cells(&mut app, 10, 10);
+
+    // Place three adjacent buildings: miner@(2,2), smelter@(3,2), miner@(4,2)
+    // They are horizontally adjacent, so group_formation_system groups them into 1 group.
+    place_building(&mut app, BuildingType::IronMiner,   2, 2);
+    place_building(&mut app, BuildingType::IronSmelter, 3, 2);
+    place_building(&mut app, BuildingType::IronMiner,   4, 2);
+
+    // Run one tick: placement_system places buildings, group_formation_system forms groups.
+    app.update();
+
+    // Verify all 3 buildings placed and form exactly 1 group.
+    let building_count = {
+        let mut q = app.world_mut().query::<&Building>();
+        q.iter(app.world()).count()
+    };
+    assert_eq!(building_count, 3, "All 3 buildings must be placed before hazard");
+
+    let initial_groups = {
+        let mut q = app.world_mut().query::<&Group>();
+        q.iter(app.world()).count()
+    };
+    assert_eq!(initial_groups, 1, "3 adjacent buildings must form exactly 1 group initially");
+
+    // Spawn point eruption targeting the smelter at (3,2), fires at current tick + 2.
+    // After one update, SimTick.current = 1 (tick_increment_system ran once).
+    let current_tick = app.world().resource::<SimTick>().current as u32;
+    app.world_mut().spawn(point_eruption(3, 2, current_tick + 2));
+
+    // Run 3 more ticks so the eruption fires and group_formation_system reacts.
+    for _ in 0..3 {
+        app.update();
+    }
+
+    // The smelter at (3,2) must be gone.
+    let smelter_exists = {
+        let mut q = app.world_mut().query::<(&Building, &Position)>();
+        q.iter(app.world()).any(|(_, p)| p.x == 3 && p.y == 2)
+    };
+    assert!(!smelter_exists,
+        "Eruption must despawn the smelter at (3,2)");
+
+    // BuildingDestroyed must have been emitted (may be from a prior tick;
+    // smelter_exists=false proves hazard_trigger_system fired correctly).
+    let remaining_buildings = {
+        let mut q = app.world_mut().query::<&Building>();
+        q.iter(app.world()).count()
+    };
+    assert_eq!(remaining_buildings, 2,
+        "Only the 2 surviving miners must remain after eruption");
+
+    // After group_formation_system reacts to BuildingDestroyed, the 2 miners
+    // are no longer adjacent to each other → they become 2 separate groups.
+    let final_groups = {
+        let mut q = app.world_mut().query::<&Group>();
+        q.iter(app.world()).count()
+    };
+    assert_eq!(final_groups, 2,
+        "After bridge building destroyed, group must split: expected 2, got {final_groups}");
+
+    // Each surviving miner must be in its own group.
+    let miner_left_group = {
+        let mut q = app.world_mut().query::<(&Position, &GroupMember)>();
+        q.iter(app.world())
+            .find(|(p, _)| p.x == 2 && p.y == 2)
+            .map(|(_, m)| m.group_id)
+    };
+    let miner_right_group = {
+        let mut q = app.world_mut().query::<(&Position, &GroupMember)>();
+        q.iter(app.world())
+            .find(|(p, _)| p.x == 4 && p.y == 2)
+            .map(|(_, m)| m.group_id)
+    };
+
+    let left_gid = miner_left_group.expect("Left miner at (2,2) must be in a group");
+    let right_gid = miner_right_group.expect("Right miner at (4,2) must be in a group");
+    assert_ne!(left_gid, right_gid,
+        "After group split, left miner and right miner must be in different groups");
+}
+
+// ── AC: Energy consumption drops after building destruction ───────────────────
+
+/// Scenario: Three buildings with known energy consumption form one group.
+/// Before the hazard: total energy consumption = miner(5) + smelter(10) + miner(5) = 20.
+/// After an eruption destroys the smelter (consumption=10), the EnergyPool must
+/// reflect the lower total: 5 + 5 = 10.
+/// This validates the chain: hazard fires → building despawned → energy_system
+/// recalculates GroupEnergy.demand → EnergyPool.total_consumption drops.
+#[test]
+fn energy_consumption_drops_after_hazard_destroys_building() {
+    let mut app = setup_combined(10, 10);
+    reveal_all_cells(&mut app, 10, 10);
+
+    // Place a wind turbine as energy source so energy_system has nonzero generation.
+    place_building(&mut app, BuildingType::WindTurbine,  0, 0);
+    // Place the three buildings that form a chain.
+    place_building(&mut app, BuildingType::IronMiner,   2, 5);
+    place_building(&mut app, BuildingType::IronSmelter, 3, 5);
+    place_building(&mut app, BuildingType::IronMiner,   4, 5);
+
+    app.update();
+
+    // After first tick: energy_system computes GroupEnergy.demand for each group.
+    // IronMiner: consumption=5.0, IronSmelter: consumption=10.0
+    // Total consumption from the 3-building group = 5 + 10 + 5 = 20
+    let initial_consumption = app.world().resource::<EnergyPool>().total_consumption;
+    assert!(
+        initial_consumption >= 20.0,
+        "Initial consumption must include miner(5)+smelter(10)+miner(5)=20, got {initial_consumption}"
+    );
+
+    // Spawn point eruption on the smelter at (3,5), fires in 2 ticks.
+    let current_tick = app.world().resource::<SimTick>().current as u32;
+    app.world_mut().spawn(point_eruption(3, 5, current_tick + 2));
+
+    // Run 3 ticks: eruption fires, building despawned, energy_system recalculates.
+    for _ in 0..3 {
+        app.update();
+    }
+
+    // Verify the smelter is gone.
+    let smelter_exists = {
+        let mut q = app.world_mut().query::<(&Building, &Position)>();
+        q.iter(app.world()).any(|(_, p)| p.x == 3 && p.y == 5)
+    };
+    assert!(!smelter_exists,
+        "Eruption must destroy the smelter at (3,5)");
+
+    // Verify energy consumption dropped by approximately the smelter's consumption (10.0).
+    let final_consumption = app.world().resource::<EnergyPool>().total_consumption;
+    assert!(
+        final_consumption < initial_consumption,
+        "EnergyPool.total_consumption must drop after smelter destroyed: \
+         initial={initial_consumption}, final={final_consumption}"
+    );
+
+    let consumption_drop = initial_consumption - final_consumption;
+    // IronSmelter.energy_consumption() = 10.0 — the drop must be at least that.
+    assert!(
+        consumption_drop >= 9.9,
+        "Consumption drop must be >= 10.0 (smelter removed): drop={consumption_drop}, \
+         initial={initial_consumption}, final={final_consumption}"
+    );
 }

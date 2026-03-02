@@ -15,7 +15,7 @@ features:
     review: passed
     issues: 0
   energy:
-    stage: tests
+    stage: impl
     tests: passing
     review: passed
     issues: 0
@@ -30,7 +30,7 @@ features:
     review: passed
     issues: 0
   transport:
-    stage: tests
+    stage: impl
     tests: passing
     review: passed
     issues: 0

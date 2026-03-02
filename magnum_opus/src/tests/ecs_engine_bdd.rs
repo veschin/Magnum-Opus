@@ -49,7 +49,7 @@ fn sim_world_app(w: i32, h: i32) -> App {
     app
 }
 
-/// Queue a building via the legacy placement queue (no fog/tier check).
+/// Queue a building via the legacy placement queue (no fog/tier check); also bypasses terrain requirement checks.
 fn place(app: &mut App, bt: BuildingType, x: i32, y: i32, recipe: Recipe) {
     app.world_mut()
         .resource_mut::<PlacementCommands>()
@@ -58,6 +58,7 @@ fn place(app: &mut App, bt: BuildingType, x: i32, y: i32, recipe: Recipe) {
 }
 
 /// Reveal all fog cells.
+/// Note: legacy queue bypasses fog check; reveal_all is defensive in case path changes.
 fn reveal_all(app: &mut App, w: i32, h: i32) {
     app.world_mut().resource_mut::<FogMap>().reveal_all(w, h);
 }
@@ -428,6 +429,8 @@ fn s3_energy_crisis_cascade() {
     run_ticks(&mut app, 10);
 
     // After 10 ticks with turbine: EnergyPool.ratio > 0
+    // production_rates_system: ratio = min(gen/cons, MAX_MODIFIER) = min(20.0/15.0, 1.5) = 1.333
+    //   rate = ratio / duration * output = 1.333 / duration * 1.0 >= required — production proceeds
     let ratio = app.world().resource::<EnergyPool>().ratio;
     assert!(ratio > 0.0, "S3: EnergyPool.ratio should be > 0 after 10 ticks with turbine, got {ratio}");
 
@@ -448,6 +451,7 @@ fn s3_energy_crisis_cascade() {
     assert_eq!(total_gen, 0.0, "S3: EnergyPool.total_generation should be 0 after turbine removed, got {total_gen}");
 
     // All ProductionState should be idle due to NoEnergy
+    // production_rates_system: ratio=0.0, rate_per_tick = ratio / duration = 0.0 / 1 = 0.0, IronOre += 1.0 * 0.0 = 0.0
     let all_no_energy = {
         let mut q = app.world_mut().query::<&ProductionState>();
         q.iter(app.world())
@@ -476,18 +480,22 @@ fn s3_energy_crisis_cascade() {
 
 /// S4: Combat pressure clears nest and advances tier.
 ///
-/// Tests B5: CreaturesPlugin must not duplicate NestCleared/TierUnlockedProgression
-/// registrations (SimulationPlugin already registers them).
+/// Tests combat pressure accumulation: combat group near nest → nest clearing → tier progression.
 #[test]
 fn s4_nest_clear_tier_progression() {
-    // B5: This will panic with duplicate message registration unless fixed
     let mut app = sim_creatures_app(20, 10);
     reveal_all(&mut app, 20, 10);
 
-    // Manually spawn combat group entity with CombatGroup component
-    let _combat_group = app.world_mut().spawn((
+    // Spawn combat group entity with CombatGroup component.
+    // Manifold pre-seeded with Herbs so combat_group_system computes supply_ratio >= 1.0
+    // regardless of whether it runs before or after combat_pressure_system (no ordering guarantee).
+    let group_entity = app.world_mut().spawn((
         Group,
-        Manifold::default(),
+        {
+            let mut m = Manifold::default();
+            m.resources.insert(ResourceType::Herbs, 100.0);
+            m
+        },
         GroupEnergy { demand: 10.0, allocated: 20.0, priority: EnergyPriority::Medium },
         GroupPosition { x: 3, y: 3 },
         Position { x: 3, y: 3 },
@@ -503,6 +511,24 @@ fn s4_nest_clear_tier_progression() {
             consumption_multiplier: 1.0,
         },
     )).id();
+
+    // Spawn a proper ImpCamp Building member of the group (matches real game entity structure).
+    app.world_mut().spawn((
+        Building { building_type: BuildingType::ImpCamp },
+        GroupMember { group_id: group_entity },
+        CombatGroup {
+            building_kind: CombatBuildingKind::ImpCamp,
+            base_organic_rate: 1.0,
+            base_protection_radius: 6.0,
+            protection_dps: 100.0,
+            breach_threshold: 0.3,
+            supply_ratio: 1.0,
+            max_minions: 4,
+            output_multiplier: 1.0,
+            consumption_multiplier: 1.0,
+        },
+        Position { x: 3, y: 3 },
+    ));
 
     // Spawn CreatureNest at (6,3)
     let _nest = app.world_mut().spawn((
@@ -538,22 +564,15 @@ fn s4_nest_clear_tier_progression() {
     run_ticks(&mut app, 2);
 
     // After 2 ticks: NestCleared event should be emitted (combat_pressure_system → nest_clearing_system)
-    // Note: This requires combat_pressure_system to apply pressure, then nest_clearing_system to fire event
     let nest_cleared = {
         let msgs = app.world().get_resource::<Messages<NestCleared>>().unwrap();
         msgs.iter_current_update_messages().any(|e| e.nest_id.contains("ForestWolfDen"))
     };
-    // TierState should advance to 2 (requires tier_gate_system to react to NestCleared)
+    // TierState should advance to 2 (tier_gate_system reacts to NestCleared)
     let tier = app.world().resource::<TierState>().current_tier;
 
-    // Note: These may fail until B5 is fixed (no panic) and creature systems are wired
-    // The test checks that we can at least run without panicking (B5 test)
-    // Full assertion requires system implementation
-    assert!(
-        nest_cleared || tier == 2,
-        "S4 (B5): expected NestCleared event or TierState==2 after 2 ticks. \
-         nest_cleared={nest_cleared}, tier={tier}"
-    );
+    assert!(nest_cleared, "nest should be cleared after sufficient combat pressure");
+    assert_eq!(tier, 2, "tier should advance from 1 to 2 after nest clearing");
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

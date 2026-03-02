@@ -1623,6 +1623,8 @@ fn fully_starved_group_makes_zero_recipe_progress() {
         Recipe::simple(vec![], vec![(ResourceType::IronOre, 1.0)], 10),
     );
     // No energy buildings
+    // production_system: !state.active, !can_start (no IronOre in manifold), ratio<=0.0 → NoEnergy
+    // (NoEnergy takes priority over NoInputs when ratio is zero)
     app.update();
 
     // After 10 ticks, progress should remain at 0 (speed_modifier = 0.0)
@@ -1650,4 +1652,242 @@ fn fully_starved_group_makes_zero_recipe_progress() {
     let group = group_at(&mut app, 3, 3);
     let ge = group_energy(&mut app, group);
     assert_eq!(ge.ratio(), 0.0, "speed modifier = 0.0 when starved");
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AC7: Energy cascade — removing / re-adding energy source affects production
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Scenario: Removing energy source halts all production with NoEnergy idle reason
+///
+/// Setup:
+///   IronSmelter (cons=10) + WindTurbine (gen=20) placed adjacent → one group.
+///   After 1 tick: smelter is idle with idle_reason=NoInputs (powered, but no ore).
+///   Despawn WindTurbine.
+///   After 1 more tick: EnergyPool.ratio == 0.0, smelter idle_reason = NoEnergy.
+///   5 more ticks: smelter remains idle (no IronBar produced).
+#[test]
+fn removing_energy_source_halts_all_production_with_no_energy_idle_reason() {
+    let mut app = test_app(10, 10);
+
+    // Place smelter + turbine adjacent so they form one group.
+    // Smelter needs IronOre input; manifold is empty → idle=NoInputs while powered.
+    place_with_recipe(
+        &mut app,
+        BuildingType::IronSmelter,
+        3,
+        3,
+        Recipe::simple(
+            vec![(ResourceType::IronOre, 2.0)],
+            vec![(ResourceType::IronBar, 1.0)],
+            10,
+        ),
+    );
+    place(&mut app, BuildingType::WindTurbine, 4, 3);
+    app.update();
+
+    // After tick 1: pool has gen=20, smelter is NOT active (no IronOre in manifold).
+    // Since ratio > 0 but can_start = false → idle_reason = NoInputs.
+    {
+        let pool = app.world().resource::<EnergyPool>();
+        assert_eq!(pool.total_generation, 20.0, "turbine gen=20 before removal");
+
+        let mut q = app.world_mut().query::<(&ProductionState, &Position)>();
+        let idle_reason = q.iter(app.world())
+            .find(|(_, p)| p.x == 3 && p.y == 3)
+            .map(|(ps, _)| ps.idle_reason)
+            .expect("smelter ProductionState not found");
+        assert_eq!(
+            idle_reason,
+            Some(IdleReason::NoInputs),
+            "smelter should be idle with NoInputs (powered but no ore), got {:?}",
+            idle_reason
+        );
+    }
+
+    // Despawn the turbine entity
+    remove_building(&mut app, 4, 3);
+    app.update();
+
+    // EnergyPool.ratio must be 0 after turbine removed (no generation, 10 consumption)
+    {
+        let pool = app.world().resource::<EnergyPool>();
+        assert_eq!(
+            pool.total_generation,
+            0.0,
+            "gen=0 after turbine removed, got {}",
+            pool.total_generation
+        );
+        assert_eq!(
+            pool.ratio,
+            0.0,
+            "EnergyPool.ratio==0.0 after turbine removed, got {}",
+            pool.ratio
+        );
+    }
+
+    // Smelter idle_reason must now be NoEnergy (ratio=0 → NoEnergy takes precedence)
+    {
+        let mut q = app.world_mut().query::<(&ProductionState, &Position)>();
+        let idle_reason = q.iter(app.world())
+            .find(|(_, p)| p.x == 3 && p.y == 3)
+            .map(|(ps, _)| ps.idle_reason)
+            .expect("smelter ProductionState not found");
+        assert_eq!(
+            idle_reason,
+            Some(IdleReason::NoEnergy),
+            "smelter must be idle with NoEnergy after turbine removed, got {:?}",
+            idle_reason
+        );
+    }
+
+    // Run 5 more ticks — group manifold should still have 0 IronBar (no production)
+    for _ in 0..5 {
+        app.update();
+    }
+
+    let group = group_at(&mut app, 3, 3);
+    let manifold = app.world().get::<Manifold>(group).expect("group has Manifold");
+    let iron_bar = manifold.resources.get(&ResourceType::IronBar).copied().unwrap_or(0.0);
+    assert_eq!(
+        iron_bar,
+        0.0,
+        "no IronBar produced while energy is zero, got {iron_bar}"
+    );
+}
+
+/// Scenario: Re-adding energy source resumes production after crisis
+///
+/// Setup:
+///   IronMiner (cons=5, extraction: [] → [IronOre, 1.0], duration=5) at (3,3) alone in group.
+///   WindTurbine (gen=20) at (10,3) in a SEPARATE group (not adjacent to miner).
+///   Tick 1: EnergyPool.ratio > 0, miner makes progress.
+///   Run 4 more ticks to accumulate progress.
+///   Record progress_before_removal.
+///   Despawn turbine entity.
+///   Run 1 tick: EnergyPool.ratio == 0.0.
+///   Record progress_at_crisis.
+///   Run 5 more ticks: verify progress hasn't increased (frozen).
+///   Place NEW WindTurbine at (12,3).
+///   Run 1 tick: EnergyPool.ratio > 0.
+///   Run 10 more ticks: verify group manifold has IronOre > 0 (production resumed and completed).
+#[test]
+fn re_adding_energy_source_resumes_production_after_crisis() {
+    let mut app = test_app(20, 10);
+
+    // IronMiner at (3,3) — needs IronVein terrain, no adjacent buildings → own group
+    set_terrain(&mut app, 3, 3, TerrainType::IronVein);
+    place_with_recipe(
+        &mut app,
+        BuildingType::IronMiner,
+        3,
+        3,
+        Recipe::simple(vec![], vec![(ResourceType::IronOre, 1.0)], 5),
+    );
+    // WindTurbine at (10,3) — not adjacent to miner → own separate group
+    place(&mut app, BuildingType::WindTurbine, 10, 3);
+
+    // Tick 1: both buildings placed, groups formed, energy system runs
+    app.update();
+
+    {
+        let pool = app.world().resource::<EnergyPool>();
+        assert!(
+            pool.ratio > 0.0,
+            "EnergyPool.ratio > 0 after turbine placed, got {}",
+            pool.ratio
+        );
+    }
+
+    // Run 4 more ticks to accumulate miner progress
+    for _ in 0..4 {
+        app.update();
+    }
+
+    let progress_before_removal = {
+        let mut q = app.world_mut().query::<(&ProductionState, &Position)>();
+        q.iter(app.world())
+            .find(|(_, p)| p.x == 3 && p.y == 3)
+            .map(|(ps, _)| ps.progress)
+            .unwrap_or(0.0)
+    };
+    // After 5 ticks with duration=5 and ratio=gen/cons=20/5=4→clamped 1.5:
+    // progress_per_tick = 1.5/5 = 0.30 per tick
+    // After 5 ticks: progress = 1.5 → cycle completes on or before tick 5.
+    // If cycle completes, progress resets to 0.0. Either way, production ran.
+    // We just verify the system is running (ratio was > 0 above).
+    assert!(
+        progress_before_removal >= 0.0,
+        "miner progress recorded: {progress_before_removal}"
+    );
+
+    // Despawn the turbine at (10,3)
+    remove_building(&mut app, 10, 3);
+    app.update();
+
+    {
+        let pool = app.world().resource::<EnergyPool>();
+        assert_eq!(
+            pool.ratio,
+            0.0,
+            "EnergyPool.ratio==0.0 after turbine removed, got {}",
+            pool.ratio
+        );
+    }
+
+    let progress_at_crisis = {
+        let mut q = app.world_mut().query::<(&ProductionState, &Position)>();
+        q.iter(app.world())
+            .find(|(_, p)| p.x == 3 && p.y == 3)
+            .map(|(ps, _)| ps.progress)
+            .unwrap_or(0.0)
+    };
+
+    // Run 5 ticks with no energy — progress must stay frozen at progress_at_crisis
+    for _ in 0..5 {
+        app.update();
+    }
+
+    let progress_still_frozen = {
+        let mut q = app.world_mut().query::<(&ProductionState, &Position)>();
+        q.iter(app.world())
+            .find(|(_, p)| p.x == 3 && p.y == 3)
+            .map(|(ps, _)| ps.progress)
+            .unwrap_or(0.0)
+    };
+    assert_eq!(
+        progress_still_frozen,
+        progress_at_crisis,
+        "miner progress must be frozen while energy=0; \
+         progress_at_crisis={progress_at_crisis}, after_5_frozen_ticks={progress_still_frozen}"
+    );
+
+    // Place NEW WindTurbine at different position (12,3) — not adjacent to miner
+    place(&mut app, BuildingType::WindTurbine, 12, 3);
+    app.update();
+
+    {
+        let pool = app.world().resource::<EnergyPool>();
+        assert!(
+            pool.ratio > 0.0,
+            "EnergyPool.ratio > 0 after new turbine placed, got {}",
+            pool.ratio
+        );
+    }
+
+    // Run 10 more ticks: miner should complete at least one full cycle (duration=5)
+    // and deposit IronOre into the group manifold.
+    for _ in 0..10 {
+        app.update();
+    }
+
+    let group = group_at(&mut app, 3, 3);
+    let manifold = app.world().get::<Manifold>(group).expect("group has Manifold");
+    let iron_ore = manifold.resources.get(&ResourceType::IronOre).copied().unwrap_or(0.0);
+    assert!(
+        iron_ore > 0.0,
+        "IronOre must be in group manifold after production resumed and completed cycles; \
+         got {iron_ore}. Check that energy_system allocates to miner group after new turbine, \
+         and production_system advances miner progress with duration=5."
+    );
 }

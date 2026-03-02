@@ -11,16 +11,71 @@
 //!                         1 constructor, 3 wind_turbine, 1 watchtower
 
 use crate::components::{
-    BuildingTier, MetaCurrency, MiniOpusBranch, MiniOpusKind, MiniOpusStatus, MiniOpusTrigger,
-    OpusDifficulty, OpusNodeFull, PlayerInventory, ResourceType, TierGateComponent,
+    BuildingTier, BuildingType, MetaCurrency, MiniOpusBranch, MiniOpusKind, MiniOpusStatus,
+    MiniOpusTrigger, OpusDifficulty, OpusNodeFull, PlayerInventory, Recipe, ResourceType,
+    TerrainType, TierGateComponent,
 };
 use crate::events::{
     MiniOpusCompleted, MiniOpusMissed, NestCleared, TierUnlockedProgression,
 };
 use crate::resources::{
-    Biome, MiniOpusEntry, OpusNodeEntry, OpusTreeResource, RunConfig,
-    StartingKitCommands, TieredPlacementCmd, TransportTierState,
+    Biome, Grid, MiniOpusEntry, OpusNodeEntry, OpusTreeResource, ProductionRates, RunConfig,
+    RunState, RunStatus, StartingKitCommands, TieredPlacementCmd, TransportTierState,
 };
+use crate::systems::placement::PlacementCommands;
+use crate::SimulationPlugin;
+use bevy::prelude::*;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ECS test helpers (used by refactored pipeline tests)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Create a minimal app with SimulationPlugin on a 20×20 grid.
+fn test_app() -> App {
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins);
+    app.add_plugins(SimulationPlugin { grid_width: 20, grid_height: 20 });
+    app
+}
+
+/// Place a building using the legacy PlacementCommands queue (skips inventory/fog checks).
+fn place_recipe(app: &mut App, bt: BuildingType, x: i32, y: i32, recipe: Recipe) {
+    app.world_mut()
+        .resource_mut::<PlacementCommands>()
+        .queue
+        .push((bt, x, y, recipe));
+}
+
+/// Set terrain at a grid position (needed for extraction buildings).
+fn set_terrain(app: &mut App, x: i32, y: i32, terrain: TerrainType) {
+    app.world_mut()
+        .resource_mut::<Grid>()
+        .terrain
+        .insert((x, y), terrain);
+}
+
+/// Spawn an OpusNodeFull entity into the ECS world.
+fn spawn_opus_node(app: &mut App, node_index: u32, resource: ResourceType, required_rate: f32, tier: u32) {
+    app.world_mut().spawn(OpusNodeFull {
+        node_index,
+        resource,
+        required_rate,
+        tier,
+        sustained: false,
+        sustain_ticks: 0,
+    });
+}
+
+/// A Recipe that produces `output_amount` of `resource` per `duration_ticks` with no inputs.
+fn extraction_recipe(resource: ResourceType, output_amount: f32, duration_ticks: u32) -> Recipe {
+    Recipe::simple(vec![], vec![(resource, output_amount)], duration_ticks)
+}
+
+/// Count how many OpusNodeFull entities are sustained.
+fn count_sustained_nodes(app: &mut App) -> usize {
+    let mut q = app.world_mut().query::<&OpusNodeFull>();
+    q.iter(app.world()).filter(|n| n.sustained).count()
+}
 
 // ── AC1: Opus tree nodes are production throughput milestones ─────────────────
 
@@ -212,6 +267,123 @@ fn milestone_does_not_complete_when_rate_is_below_required() {
 
     assert!(!node.sustained, "node must NOT be sustained when rate 3.5 < required 4.0");
     assert_eq!(node.sustain_ticks, 0, "sustain_ticks reset to 0 when below required");
+}
+
+// ── AC2 (ECS pipeline): Milestone check via real placement → group formation → production_rates → milestone_check ──
+
+/// Scenario: milestone_check_system marks node sustained when real production rate meets requirement
+/// for sustain_window_ticks consecutive ticks.
+///
+/// Setup: wind_turbine (gen=20) adjacent to iron_miner (cons=5), iron_miner recipe produces
+/// IronOre at rate 1.0/tick (output=1.0, duration=1). sustain_window=1 → node sustained in 1 tick.
+#[test]
+fn milestone_check_system_marks_node_sustained_via_real_production_pipeline() {
+    let mut app = test_app();
+
+    // Require rate = 1.0 IronOre/tick; sustain_window = 1 tick (for fast test)
+    spawn_opus_node(&mut app, 0, ResourceType::IronOre, 1.0, 1);
+    app.world_mut()
+        .resource_mut::<RunConfig>()
+        .sustain_window_ticks = 1;
+
+    // Place wind_turbine (gen=20) at (0,0) and iron_miner (cons=5) at (1,0) — adjacent → same group.
+    // IronMiner needs IronVein terrain.
+    set_terrain(&mut app, 1, 0, TerrainType::IronVein);
+    place_recipe(&mut app, BuildingType::WindTurbine, 0, 0, extraction_recipe(ResourceType::IronOre, 0.0, 1));
+    place_recipe(&mut app, BuildingType::IronMiner, 1, 0, extraction_recipe(ResourceType::IronOre, 1.0, 1));
+
+    // One tick: placement → group_formation → energy_system → production_rates_system → milestone_check_system
+    app.update();
+
+    // production_rates_system computes IronOre rate from IronMiner:
+    //   ratio = min(gen/cons, MAX_MODIFIER) = min(20.0/5.0, 1.5) = 1.5
+    //   rate = ratio / duration * output = 1.5 / 1 * 1.0 = 1.5 >= required 1.0
+    // milestone_check_system: sustain_ticks = 1 >= window = 1 → sustained = true
+    let sustained = count_sustained_nodes(&mut app);
+    assert_eq!(sustained, 1, "OpusNodeFull must be sustained after 1 tick at rate 1.5 >= required 1.0");
+
+    // Verify node resource and index are correct
+    let mut q = app.world_mut().query::<&OpusNodeFull>();
+    let node = q.iter(app.world()).next().expect("OpusNodeFull entity must exist");
+    assert_eq!(node.node_index, 0, "node_index must be 0");
+    assert_eq!(node.resource, ResourceType::IronOre, "node resource must be IronOre");
+    assert!(node.sustained, "node.sustained must be true");
+}
+
+/// Scenario: milestone_check_system does NOT mark node sustained when production rate is below required.
+///
+/// Setup: IronMiner produces IronOre at rate 1.0/tick, but required_rate is 2.0.
+/// After 1 tick, sustain_ticks stays 0 and node is not sustained.
+#[test]
+fn milestone_check_system_does_not_sustain_node_when_production_rate_below_required() {
+    let mut app = test_app();
+
+    // Require rate = 2.0 IronOre/tick — production will only reach ~1.5 (1 miner)
+    spawn_opus_node(&mut app, 0, ResourceType::IronOre, 2.0, 1);
+    app.world_mut()
+        .resource_mut::<RunConfig>()
+        .sustain_window_ticks = 1;
+
+    set_terrain(&mut app, 1, 0, TerrainType::IronVein);
+    place_recipe(&mut app, BuildingType::WindTurbine, 0, 0, extraction_recipe(ResourceType::IronOre, 0.0, 1));
+    place_recipe(&mut app, BuildingType::IronMiner, 1, 0, extraction_recipe(ResourceType::IronOre, 1.0, 1));
+
+    app.update();
+
+    // IronMiner rate ≈ 1.5/tick (energy_ratio=1.5, duration=1, output=1.0) < required 2.0
+    // milestone_check_system: sustain_ticks reset to 0, node NOT sustained
+    let sustained = count_sustained_nodes(&mut app);
+    assert_eq!(sustained, 0, "node must NOT be sustained when rate ~1.5 < required 2.0");
+
+    let mut q = app.world_mut().query::<&OpusNodeFull>();
+    let node = q.iter(app.world()).next().expect("OpusNodeFull entity must exist");
+    assert!(!node.sustained, "node.sustained must be false");
+    assert_eq!(node.sustain_ticks, 0, "sustain_ticks must be 0 when rate is below required");
+}
+
+/// Scenario: milestone_check_system accumulates sustain_ticks over multiple ticks before
+/// marking node sustained. sustain_window = 3, so 3 consecutive ticks at sufficient rate
+/// are required.
+#[test]
+fn milestone_check_system_requires_consecutive_ticks_to_sustain_node() {
+    let mut app = test_app();
+
+    // Required rate = 1.0, sustain_window = 3 ticks
+    spawn_opus_node(&mut app, 0, ResourceType::IronOre, 1.0, 1);
+    app.world_mut()
+        .resource_mut::<RunConfig>()
+        .sustain_window_ticks = 3;
+
+    set_terrain(&mut app, 1, 0, TerrainType::IronVein);
+    place_recipe(&mut app, BuildingType::WindTurbine, 0, 0, extraction_recipe(ResourceType::IronOre, 0.0, 1));
+    place_recipe(&mut app, BuildingType::IronMiner, 1, 0, extraction_recipe(ResourceType::IronOre, 1.0, 1));
+
+    // After 1 tick: sustain_ticks = 1, NOT yet sustained
+    app.update();
+    assert_eq!(count_sustained_nodes(&mut app), 0, "not sustained after 1 of 3 required ticks");
+    {
+        let mut q = app.world_mut().query::<&OpusNodeFull>();
+        let node = q.iter(app.world()).next().unwrap();
+        assert_eq!(node.sustain_ticks, 1, "sustain_ticks must be 1 after first tick at rate");
+    }
+
+    // After 2 ticks: sustain_ticks = 2, NOT yet sustained
+    app.update();
+    assert_eq!(count_sustained_nodes(&mut app), 0, "not sustained after 2 of 3 required ticks");
+    {
+        let mut q = app.world_mut().query::<&OpusNodeFull>();
+        let node = q.iter(app.world()).next().unwrap();
+        assert_eq!(node.sustain_ticks, 2, "sustain_ticks must be 2 after second tick at rate");
+    }
+
+    // After 3 ticks: sustain_ticks = 3 >= window = 3 → sustained = true
+    app.update();
+    assert_eq!(count_sustained_nodes(&mut app), 1, "node must be sustained after 3 consecutive ticks");
+    {
+        let mut q = app.world_mut().query::<&OpusNodeFull>();
+        let node = q.iter(app.world()).next().unwrap();
+        assert!(node.sustained, "node.sustained must be true after 3 ticks at sufficient rate");
+    }
 }
 
 // ── AC3: Opus tree UI shows nodes, rates, completion % ───────────────────────
@@ -1383,4 +1555,228 @@ fn tier_timing_targets_are_advisory_only() {
     let nest_cleared = NestCleared { nest_id: "forest_wolf_den".to_string() };
     assert_eq!(nest_cleared.nest_id, "forest_wolf_den",
         "player can still clear T1 nest to unlock T2");
+}
+
+// ── T-9: Win condition via real production pipeline ───────────────────────────
+//
+// These tests verify the complete chain:
+//   real buildings → placement_system → group_formation_system → energy_system
+//   → production_rates_system → milestone_check_system → opus_tree_sync_system
+//   → run_lifecycle_system → RunState::Won
+//
+// ProductionRates is computed from real capacity; it is NOT manually set.
+
+/// Scenario: A single opus node with required_rate = 1.0 is sustained by a real
+/// IronMiner+WindTurbine group. After sustain_window=1 tick the node is sustained,
+/// opus_tree_sync_system fires simultaneous_sustain_ticks ≥ 0 (sustain_ticks_required default),
+/// and run_lifecycle_system sets RunState::Won.
+#[test]
+fn real_production_achieves_milestone_sustain_and_wins_run() {
+    let mut app = test_app();
+
+    // Opus tree: 1 node, IronOre at rate 1.0. sustain_window = 1 tick.
+    spawn_opus_node(&mut app, 0, ResourceType::IronOre, 1.0, 1);
+    {
+        let mut cfg = app.world_mut().resource_mut::<RunConfig>();
+        cfg.sustain_window_ticks = 1;
+    }
+    // OpusTreeResource: sustain_ticks_required = 0 (default) so RunWon fires immediately
+    // when all nodes are simultaneously sustained (after 1 tick of sustained state).
+    // The default sustain_ticks_required is 0; opus_tree_sync_system increments
+    // simultaneous_sustain_ticks by 1 when all nodes are sustained, so after 2 total
+    // ticks (1 to sustain, 1 to detect all_sustained) the condition 1 >= 0 is met.
+    // We set sustain_ticks_required = 0 explicitly for clarity.
+    app.world_mut()
+        .resource_mut::<OpusTreeResource>()
+        .sustain_ticks_required = 0;
+
+    // Place wind_turbine (gen=20) at (0,0) and iron_miner (cons=5) at (1,0) — adjacent → same group.
+    set_terrain(&mut app, 1, 0, TerrainType::IronVein);
+    place_recipe(&mut app, BuildingType::WindTurbine, 0, 0,
+        extraction_recipe(ResourceType::IronOre, 0.0, 1));
+    place_recipe(&mut app, BuildingType::IronMiner, 1, 0,
+        extraction_recipe(ResourceType::IronOre, 1.0, 1));
+
+    // Tick 1: buildings placed, grouped, energy allocated, production_rates computed,
+    //   milestone_check marks OpusNodeFull as sustained (sustain_ticks=1 >= window=1),
+    //   opus_tree_sync rebuilds tree (all_sustained=true) and increments simultaneous_sustain_ticks to 1,
+    //   run_lifecycle checks: all_sustained && 1 >= 0 → RunState::Won.
+    app.update();
+
+    // Verify ProductionRates has non-zero IronOre rate from real pipeline
+    let iron_ore_rate = app.world().resource::<ProductionRates>().get(ResourceType::IronOre);
+    assert!(iron_ore_rate > 0.0,
+        "ProductionRates must have positive IronOre rate from real IronMiner, got {iron_ore_rate}");
+    assert!(iron_ore_rate >= 1.0,
+        "IronOre rate must meet required_rate=1.0; got {iron_ore_rate}");
+
+    // Verify OpusNodeFull entity is sustained
+    let sustained = count_sustained_nodes(&mut app);
+    assert_eq!(sustained, 1, "OpusNodeFull must be sustained after 1 tick of real production");
+
+    // Verify OpusTreeResource was synced and all_sustained
+    {
+        let tree = app.world().resource::<OpusTreeResource>();
+        assert_eq!(tree.main_path.len(), 1, "OpusTreeResource must have 1 node synced");
+        assert!(tree.main_path[0].sustained, "node in OpusTreeResource must be sustained");
+        assert!((tree.completion_pct - 1.0).abs() < 0.001,
+            "completion_pct must be 1.0 (1/1 nodes sustained)");
+    }
+
+    // Verify run lifecycle transitioned to Won
+    let run_state = app.world().resource::<RunState>();
+    assert_eq!(run_state.status, RunStatus::Won,
+        "RunState must be Won after all nodes sustained via real production pipeline");
+}
+
+/// Scenario: Two opus nodes (IronOre + Wood) both require real production.
+/// Two separate groups produce each resource. Both nodes must be sustained
+/// simultaneously before RunState::Won is set.
+#[test]
+fn two_opus_nodes_both_require_real_production_before_win() {
+    let mut app = test_app();
+
+    // Node 0: IronOre rate 1.0/tick
+    // Node 1: Wood rate 1.0/tick
+    spawn_opus_node(&mut app, 0, ResourceType::IronOre, 1.0, 1);
+    spawn_opus_node(&mut app, 1, ResourceType::Wood, 1.0, 1);
+    {
+        let mut cfg = app.world_mut().resource_mut::<RunConfig>();
+        cfg.sustain_window_ticks = 1;
+    }
+    app.world_mut()
+        .resource_mut::<OpusTreeResource>()
+        .sustain_ticks_required = 0;
+
+    // Group A: WindTurbine(0,0) + IronMiner(1,0) → IronOre
+    set_terrain(&mut app, 1, 0, TerrainType::IronVein);
+    place_recipe(&mut app, BuildingType::WindTurbine, 0, 0,
+        extraction_recipe(ResourceType::IronOre, 0.0, 1));
+    place_recipe(&mut app, BuildingType::IronMiner, 1, 0,
+        extraction_recipe(ResourceType::IronOre, 1.0, 1));
+
+    // Group B: WindTurbine(0,2) + TreeFarm(1,2) → Wood (TreeFarm has 2×2 footprint)
+    // TreeFarm at (1,2) occupies (1,2),(2,2),(1,3),(2,3)
+    // WindTurbine at (0,2) adjacent to (1,2) → same group
+    place_recipe(&mut app, BuildingType::WindTurbine, 0, 2,
+        extraction_recipe(ResourceType::Wood, 0.0, 1));
+    place_recipe(&mut app, BuildingType::TreeFarm, 1, 2,
+        extraction_recipe(ResourceType::Wood, 1.0, 1));
+
+    // After 1 tick: both nodes sustained, all_sustained=true, RunWon
+    app.update();
+
+    let iron_ore_rate = app.world().resource::<ProductionRates>().get(ResourceType::IronOre);
+    let wood_rate = app.world().resource::<ProductionRates>().get(ResourceType::Wood);
+    assert!(iron_ore_rate >= 1.0,
+        "IronOre rate must be >= 1.0 from real IronMiner, got {iron_ore_rate}");
+    assert!(wood_rate >= 1.0,
+        "Wood rate must be >= 1.0 from real TreeFarm, got {wood_rate}");
+
+    let sustained = count_sustained_nodes(&mut app);
+    assert_eq!(sustained, 2,
+        "both OpusNodeFull entities must be sustained after 1 tick of real production");
+
+    let tree = app.world().resource::<OpusTreeResource>();
+    assert!((tree.completion_pct - 1.0).abs() < 0.001,
+        "completion_pct must be 1.0 when both nodes sustained");
+
+    let run_state = app.world().resource::<RunState>();
+    assert_eq!(run_state.status, RunStatus::Won,
+        "RunState must be Won after all nodes simultaneously sustained via real production");
+}
+
+/// Scenario: Opus node NOT sustained when no energy source is present.
+/// Without energy, production_rates_system computes 0 rate because ratio=0.
+/// milestone_check_system resets sustain_ticks to 0; RunState stays InProgress.
+#[test]
+fn no_energy_means_zero_production_rate_and_no_win() {
+    let mut app = test_app();
+
+    spawn_opus_node(&mut app, 0, ResourceType::IronOre, 1.0, 1);
+    {
+        let mut cfg = app.world_mut().resource_mut::<RunConfig>();
+        cfg.sustain_window_ticks = 1;
+    }
+
+    // Place IronMiner with NO wind turbine → no energy → ratio=0 → rate=0
+    set_terrain(&mut app, 0, 0, TerrainType::IronVein);
+    place_recipe(&mut app, BuildingType::IronMiner, 0, 0,
+        extraction_recipe(ResourceType::IronOre, 1.0, 1));
+
+    app.update();
+
+    // Without energy, energy_system gives demand=5 but allocated=0 → ratio=0.
+    // production_rates_system: ratio=0.0, rate_per_tick = ratio / duration = 0.0 / 1 = 0.0, IronOre += 1.0 * 0.0 = 0.0
+    let iron_ore_rate = app.world().resource::<ProductionRates>().get(ResourceType::IronOre);
+    assert_eq!(iron_ore_rate, 0.0,
+        "IronOre rate must be 0.0 without energy source, got {iron_ore_rate}");
+
+    let sustained = count_sustained_nodes(&mut app);
+    assert_eq!(sustained, 0,
+        "no node must be sustained when production rate is 0");
+
+    let run_state = app.world().resource::<RunState>();
+    assert_eq!(run_state.status, RunStatus::InProgress,
+        "RunState must remain InProgress when production rate is insufficient");
+}
+
+/// Scenario: Run does NOT win when opus node is not yet sustained (sustain_window > 1 tick).
+/// After 1 tick sustain_ticks=1, but window=3 requires 3 more ticks.
+/// RunState must stay InProgress until the full window is met.
+#[test]
+fn run_stays_in_progress_until_full_sustain_window_met() {
+    let mut app = test_app();
+
+    spawn_opus_node(&mut app, 0, ResourceType::IronOre, 1.0, 1);
+    {
+        let mut cfg = app.world_mut().resource_mut::<RunConfig>();
+        cfg.sustain_window_ticks = 3;
+        // Large max_ticks so timeout doesn't fire
+        cfg.max_ticks = 100_000;
+    }
+    app.world_mut()
+        .resource_mut::<OpusTreeResource>()
+        .sustain_ticks_required = 0;
+
+    set_terrain(&mut app, 1, 0, TerrainType::IronVein);
+    place_recipe(&mut app, BuildingType::WindTurbine, 0, 0,
+        extraction_recipe(ResourceType::IronOre, 0.0, 1));
+    place_recipe(&mut app, BuildingType::IronMiner, 1, 0,
+        extraction_recipe(ResourceType::IronOre, 1.0, 1));
+
+    // Tick 1: sustain_ticks=1 < window=3 → node not yet sustained → still InProgress
+    app.update();
+    assert_eq!(
+        app.world().resource::<RunState>().status,
+        RunStatus::InProgress,
+        "RunState must be InProgress after tick 1 (sustain_ticks=1, window=3)"
+    );
+    {
+        let mut q = app.world_mut().query::<&OpusNodeFull>();
+        let node = q.iter(app.world()).next().unwrap();
+        assert_eq!(node.sustain_ticks, 1, "sustain_ticks must be 1 after first tick");
+        assert!(!node.sustained, "node must not yet be sustained");
+    }
+
+    // Tick 2: sustain_ticks=2 < window=3 → still InProgress
+    app.update();
+    assert_eq!(
+        app.world().resource::<RunState>().status,
+        RunStatus::InProgress,
+        "RunState must be InProgress after tick 2 (sustain_ticks=2, window=3)"
+    );
+
+    // Tick 3: sustain_ticks=3 >= window=3 → sustained=true → all_sustained → RunWon
+    app.update();
+    {
+        let mut q = app.world_mut().query::<&OpusNodeFull>();
+        let node = q.iter(app.world()).next().unwrap();
+        assert!(node.sustained, "node must be sustained after 3rd tick");
+    }
+    assert_eq!(
+        app.world().resource::<RunState>().status,
+        RunStatus::Won,
+        "RunState must be Won after full sustain_window (3 ticks) is met via real production"
+    );
 }
