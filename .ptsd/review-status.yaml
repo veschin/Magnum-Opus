@@ -35,7 +35,7 @@ features:
     review: passed
     issues: 0
   world:
-    stage: impl
+    stage: tests
     tests: passing
     review: passed
     issues: 0
