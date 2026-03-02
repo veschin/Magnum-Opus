@@ -14,12 +14,12 @@ Magnum Opus — roguelike factory game. 1–2h runs, meta-progression, Factorio 
 
 ## Build & Test
 
-All code lives in `spike/` (proof-of-concept crate):
+All code lives in `magnum_opus/` crate:
 
 ```bash
-cd spike && cargo build          # build
-cd spike && cargo test           # run all tests
-cd spike && cargo test <name>    # run single test by name
+cd magnum_opus && cargo build          # build
+cd magnum_opus && cargo test           # run all tests
+cd magnum_opus && cargo test <name>    # run single test by name
 ```
 
 ## Architecture (docs/ARCH.md)
@@ -45,17 +45,17 @@ Resource conservation, grid alignment, determinism, group connectivity, single g
 | `.ptsd/docs/PRD.md` | Product requirements — 8 features |
 | `docs/ideas.yaml` | Ideas registry (35 ideas) |
 | `docs/ENGINE_PoC.md` | Bevy ECS proof-of-concept results |
-| `spike/` | PoC crate — 5 systems, 8 tests, 864 lines |
+| `magnum_opus/` | Main crate — 384 tests, 8 features |
 
-## Spike Code Structure (spike/src/)
+## Code Structure (magnum_opus/src/)
 
 ```
 lib.rs              — plugin registration, phase ordering
 components.rs       — all ECS component structs
 resources.rs        — global singleton resources (Grid, PlacementCommands, EnergyPool)
 events.rs           — event types (BuildingPlaced, BuildingRemoved)
-systems/            — one file per system (placement, groups, power, production, manifold)
-tests/              — headless tests (placement, groups, power, integration, audit)
+systems/            — one file per system (placement, groups, power, production, manifold, transport, ux)
+tests/              — BDD tests (one file per feature) + legacy unit tests
 ```
 
 ### Test Pattern
@@ -69,11 +69,11 @@ tests/              — headless tests (placement, groups, power, integration, a
 
 No mocks for internal code. Real ECS, real data.
 
-## Features (8 total, all at PRD stage, all reviews passed)
+## Features (8 total, all at tests stage, reviews passed ≥7/10)
 
 building-groups, transport, world, creatures, progression, meta, energy, ux
 
-Next pipeline step for all features: **seed** (golden seed data).
+Next pipeline step for all features: **implementation** (write-impl).
 
 ## Design Vocabulary
 
