@@ -395,3 +395,46 @@ Built-in production intelligence: calculator, chain visualizer, efficiency dashb
 - Calculator asked for item that requires unavailable (tier-locked) buildings: shows "requires T2/T3" label
 - Chain visualizer with 0 groups: empty overlay, no crash
 - Dashboard during run start (no data yet): shows zeros, not errors
+
+---
+
+<!-- feature:ecs-engine -->
+### F9: Cross-Feature Integration (ECS Engine)
+
+Verify that all 8 features work together through real ECS pipelines.
+
+**Summary:** All 8 features (building-groups, transport, world, creatures, progression, meta, energy, ux) are implemented and pass isolated tests. This feature creates integration scenarios that combine 3+ plugins per test, exercising cross-feature pipelines through real `app.update()` cycles. The tests expose and fix wiring bugs that only surface when plugins are stacked.
+
+**Problem:** Each feature was developed and tested in isolation. No test ever combines SimulationPlugin + WorldPlugin + CreaturesPlugin. Eight wiring bugs exist that prevent features from integrating: missing system registrations, duplicate event types, unwritten resources, and uncoordinated tick counters. These bugs are invisible in isolated tests but fatal in a real game run.
+
+**How it works:**
+- 12 integration scenarios each combine 3+ features and run real `app.update()` cycles (10-300 ticks)
+- Scenarios cover the full gameplay pipeline: energy → production → manifold → transport → progression
+- Each scenario exposes at least one wiring bug that must be fixed for the test to pass
+- Wiring bug fixes are minimal — just registration, bridging, or initialization code
+
+**Acceptance criteria:**
+- AC1: Production pipeline — energy source powers miners+smelter in group A, processor in group B connected by rune path; after ~200 ticks cargo entities exist in transit and destination manifold receives resources
+- AC2: Transport delivery with real production — group A produces IronOre, transports to group B smelter which consumes and produces IronBar; group B manifold contains IronBar after sufficient ticks
+- AC3: Energy crisis cascade — working chain sustaining milestone loses energy source; production halts (idle_reason=NoEnergy), production rate drops to 0, sustain_ticks resets
+- AC4: Nest clear → tier progression — combat pressure exceeds nest strength; NestCleared fires, TierState advances to tier 2, transport tier upgrades, BuildingTier upgrades
+- AC5: Organic supply chain — combat group produces Hide, transported to Tannery group, produces TreatedLeather; milestone sustain_ticks increments
+- AC6: Group split on removal — 3 buildings in a row form 1 group; removing middle building yields 2 separate groups with correct manifold splits
+- AC7: Full run win condition — opus nodes with low required_rate and short sustain window; production sustains all nodes, RunWon event emitted, RunState.status==Won
+- AC8: Diamond network conservation — 4 groups in A→B, A→C, B→D, C→D diamond; total_produced == sum(manifolds + cargo) + total_consumed (no duplication, no loss)
+- AC9: Determinism — identical setup run twice for 50 ticks; all manifold, energy, production, and cargo state matches exactly
+- AC10: UX dashboard reads live state — production chain running; DashboardState reflects EnergyPool, TierState, and opus progress correctly
+- AC11: Trader converts surplus — production creates surplus in manifold; Trader converts to Gold; TraderEarnings.gold > 0, inflation accumulates, second trade yields less per unit
+- AC12: Hazard destroys building → group reforms — 3 adjacent buildings form 1 group; hazard destroys middle building; group splits into 2, energy rebalances, production continues independently
+
+**Non-goals:**
+- Rendering or visual integration testing
+- Performance benchmarking or load testing
+- Testing more than 300 ticks per scenario
+- Testing all biome variants (one biome per scenario is sufficient)
+
+**Edge cases:**
+- Stacking SimulationPlugin + CreaturesPlugin must not panic on duplicate event registration
+- Combined SimTick (WorldPlugin) and SimulationTick (UX) counters must not desync
+- Groups spawned by group_formation_system must have position data for combat_pressure_system range checks
+- Trading system must be registered and functional when SimulationPlugin is active
