@@ -21,5 +21,8 @@ features:
     title: 
     status: implemented
   - id: ux
-    title: 
+    title:
     status: implemented
+  - id: ecs-engine
+    title: Cross-Feature Integration
+    status: new

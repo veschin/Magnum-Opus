@@ -3,7 +3,9 @@ features:
     stage: impl
     hashes:
       bdd: ac50a20bea4f888ab698a4be6eaff032395fb5142c6eddb2ce7bef308d0d4216
+      prd: 83dbbbea57ceb31734ec7d097b19b373c02feaa6da306687d22849e83311ebb6
       seed: bff60b73d4268d59a5765c131f4bc9636a3cbd68cb5b88cbdab4c281aaa31da6
+      test: 6019f13f3653347b2b1223a93dfa3c3b34c8dbe3f2fd4d0b3357f4f55fced726
       test_results: passed:1 failed:0
       test_status: passing
     scores:
@@ -28,7 +30,9 @@ features:
     stage: impl
     hashes:
       bdd: 6fffc33b1088310569728752c8409e226be8fa48a327cb7c8ca9f0ec0a43e060
+      prd: 83dbbbea57ceb31734ec7d097b19b373c02feaa6da306687d22849e83311ebb6
       seed: e4fcf5e33b213e96a635d6cdb4b43df197faae7cac1c602f2b6bef226b507cae
+      test: dec1a89f2d68718746609a53b3a5abc0422f70500a70fc89931fbff58e897a64
       test_results: passed:1 failed:0
       test_status: passing
     scores:
@@ -49,11 +53,37 @@ features:
         at: "2026-03-01T23:04:53.580322825+03:00"
     tests:
       - .ptsd/bdd/creatures/creatures.feature::magnum_opus/src/tests/creatures_bdd.rs
+  ecs-engine:
+    stage: impl
+    hashes:
+      bdd: 20022e09d7dbe3721c999fd0302e50b8da8c00ff034cef9fd7a55934e01a130f
+      prd: 83dbbbea57ceb31734ec7d097b19b373c02feaa6da306687d22849e83311ebb6
+      seed: 4ad3035f81625ae0c37062cf45b18220f868fca4306ad23f4fac08586361cc90
+    scores:
+      bdd:
+        score: 8
+        at: "2026-03-02T09:50:25.838257295+03:00"
+      impl:
+        score: 8
+        at: "2026-03-02T11:00:12.883545314+03:00"
+      prd:
+        score: 8
+        at: "2026-03-02T09:41:33.684398894+03:00"
+      seed:
+        score: 8
+        at: "2026-03-02T09:41:41.194797657+03:00"
+      tests:
+        score: 8
+        at: "2026-03-02T09:59:57.180149212+03:00"
+    tests:
+      - .ptsd/bdd/ecs-engine.feature::magnum_opus/src/tests/ecs_engine_bdd.rs
   energy:
     stage: impl
     hashes:
       bdd: bb75f0a2a675d0334506df54ecb67c9bab0de7d225a8a3fb2692fdb548f9c23e
+      prd: 83dbbbea57ceb31734ec7d097b19b373c02feaa6da306687d22849e83311ebb6
       seed: 80c6a29d15bdbcb00787ee0c0a1eccb4408555618735a562b0e5bc3d50bef9de
+      test: 39bbe5bc8cb57db45af52a6bd7f2bb54ebdec0ecc5b0ad0ab0fa7eb8e50ad7b0
       test_results: passed:1 failed:0
       test_status: passing
     scores:
@@ -78,7 +108,9 @@ features:
     stage: impl
     hashes:
       bdd: ea8724a47b3c6bd859ccae75ff5ed0b0191eabab59998f827928e34b5879a5e5
+      prd: 83dbbbea57ceb31734ec7d097b19b373c02feaa6da306687d22849e83311ebb6
       seed: 8b78855903488f70011ff627bff4b71363d79cb6a50408065fb89e0a956527da
+      test: ec86644b8d031c35092a88f5a2bb2fc0364fab0eff948ae45f5488c75d044f74
       test_results: passed:1 failed:0
       test_status: passing
     scores:
@@ -103,7 +135,9 @@ features:
     stage: impl
     hashes:
       bdd: d5c058de93fb45d8401d11546d2e1ab1a25bb621b472b03829b30ec81d5a7330
+      prd: 83dbbbea57ceb31734ec7d097b19b373c02feaa6da306687d22849e83311ebb6
       seed: 9eb8147821484a6cd1cfc1d92be1bbc04db476d99567f777174a56bb0a31d775
+      test: aec03b55acb611426c5ab599bb075dd184d7078631de7fd565f95dd735c4bdf8
       test_results: passed:1 failed:0
       test_status: passing
     scores:
@@ -128,7 +162,9 @@ features:
     stage: impl
     hashes:
       bdd: 9a5b37fb125db29c35742e69eaaa0ae51396b9ccf231d4a1956da764d53aeb0b
+      prd: 83dbbbea57ceb31734ec7d097b19b373c02feaa6da306687d22849e83311ebb6
       seed: 8e5db75c294ce7951569860102b4f61096f0c223f44b9701cafc182124e35312
+      test: 65ad34ca86d02c5c9cc407eef1c8fa25e0e53ac6d76c65f69db9de978bd46e4f
       test_results: passed:1 failed:0
       test_status: passing
     scores:
@@ -153,7 +189,9 @@ features:
     stage: impl
     hashes:
       bdd: 499021a2c1e22a6637917d79058f859e30ad7b4f17afa938dc957fc8aef1b686
+      prd: 83dbbbea57ceb31734ec7d097b19b373c02feaa6da306687d22849e83311ebb6
       seed: db2697407ff703c2dee6af434badcd76d163187ab372474f94cccc0b35d4883a
+      test: da0e38843f7f6c5a355e88182ae304c1880f3a57e6016c5e939fe502dff02cd9
       test_results: passed:1 failed:0
       test_status: passing
     scores:
@@ -178,7 +216,9 @@ features:
     stage: impl
     hashes:
       bdd: 2551a55f080a45f9687411afc56a159e19f55a7952899512f57bfc36f7201aff
+      prd: 83dbbbea57ceb31734ec7d097b19b373c02feaa6da306687d22849e83311ebb6
       seed: 389ca1603942d519de9eded952f00a1c892125b3a8dabcacccce770ba530dc7c
+      test: 65f02f1fc771be6b7988d6cf1df9865fde5fad9a402f6e134ec173c9150a5fae
       test_results: passed:1 failed:0
       test_status: passing
     scores:

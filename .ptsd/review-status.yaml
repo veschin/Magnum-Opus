@@ -9,6 +9,11 @@ features:
     tests: passing
     review: passed
     issues: 0
+  ecs-engine:
+    stage: impl
+    tests: absent
+    review: passed
+    issues: 0
   energy:
     stage: tests
     tests: passing
@@ -20,7 +25,7 @@ features:
     review: passed
     issues: 0
   progression:
-    stage: tests
+    stage: impl
     tests: passing
     review: passed
     issues: 0
