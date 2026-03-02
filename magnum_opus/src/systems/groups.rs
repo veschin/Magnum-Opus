@@ -2,21 +2,29 @@ use bevy::prelude::*;
 use std::collections::{HashMap, HashSet, VecDeque};
 
 use crate::components::*;
-use crate::events::{BuildingPlaced, BuildingRemoved, PauseGroup, ResumeGroup, SetGroupPriority};
+use crate::events::{BuildingPlaced, BuildingRemoved, BuildingDestroyed, PauseGroup, ResumeGroup, SetGroupPriority};
 
 pub fn group_formation_system(
     mut commands: Commands,
     mut ev_placed: MessageReader<BuildingPlaced>,
     mut ev_removed: MessageReader<BuildingRemoved>,
+    mut ev_destroyed: MessageReader<BuildingDestroyed>,
     buildings: Query<(Entity, &Position, &Building, &Footprint), With<Building>>,
     members: Query<(Entity, &GroupMember), With<Building>>,
     existing_groups: Query<(Entity, &Manifold), With<Group>>,
+    ungrouped: Query<Entity, (With<Building>, With<Footprint>, Without<GroupMember>)>,
 ) {
-    if ev_placed.is_empty() && ev_removed.is_empty() {
+    let has_ungrouped = !ungrouped.is_empty();
+    if ev_placed.is_empty() && ev_removed.is_empty() && ev_destroyed.is_empty() && !has_ungrouped {
         return;
     }
     ev_placed.read().count();
     ev_removed.read().count();
+
+    // Collect destroyed entity IDs so we can exclude them from the flood-fill even when
+    // their despawn command is still pending (i.e., hazard_trigger_system ran in the same
+    // tick before group_formation_system flushed commands).
+    let destroyed_entities: HashSet<Entity> = ev_destroyed.read().map(|e| e.entity).collect();
 
     // Snapshot old manifold contents keyed by group entity before despawn.
     let mut old_manifolds: HashMap<Entity, HashMap<ResourceType, f32>> = HashMap::new();
@@ -37,9 +45,13 @@ pub fn group_formation_system(
         commands.entity(group_entity).despawn();
     }
 
-    // Build a map: cell -> entity (for adjacency checks including multi-cell footprints)
+    // Build a map: cell -> entity (for adjacency checks including multi-cell footprints).
+    // Exclude entities that were just destroyed (their despawn may be deferred).
     let mut cell_to_entity: HashMap<(i32, i32), Entity> = HashMap::new();
     for (entity, _pos, _building, footprint) in buildings.iter() {
+        if destroyed_entities.contains(&entity) {
+            continue;
+        }
         for &cell in &footprint.cells {
             cell_to_entity.insert(cell, entity);
         }
@@ -48,8 +60,13 @@ pub fn group_formation_system(
     // Flood-fill connected components by cardinal adjacency
     let mut visited: HashSet<Entity> = HashSet::new();
 
-    for (entity, _pos, building, footprint) in buildings.iter() {
+    for (entity, _pos, building, _footprint) in buildings.iter() {
         if visited.contains(&entity) {
+            continue;
+        }
+        // Skip entities destroyed this tick (despawn may be pending).
+        if destroyed_entities.contains(&entity) {
+            visited.insert(entity);
             continue;
         }
 
@@ -97,6 +114,18 @@ pub fn group_formation_system(
 
         let initial_manifold = Manifold { resources: merged_resources };
 
+        // Compute centroid of all building positions in this group.
+        let (sum_x, sum_y, count) = group_entities.iter()
+            .filter_map(|&e| buildings.get(e).ok())
+            .fold((0i32, 0i32, 0usize), |(sx, sy, c), (_, pos, _, _)| {
+                (sx + pos.x, sy + pos.y, c + 1)
+            });
+        let group_position = if count > 0 {
+            GroupPosition { x: sum_x / count as i32, y: sum_y / count as i32 }
+        } else {
+            GroupPosition { x: 0, y: 0 }
+        };
+
         let group_id = commands
             .spawn((
                 Group,
@@ -105,11 +134,12 @@ pub fn group_formation_system(
                 GroupControl::default(),
                 GroupStats::default(),
                 GroupType { class: group_class },
+                group_position,
             ))
             .id();
 
         for &e in &group_entities {
-            commands.entity(e).insert(GroupMember { group_id });
+            commands.entity(e).try_insert(GroupMember { group_id });
         }
 
         // Determine and store boundary cells as OutputSender / InputReceiver availability

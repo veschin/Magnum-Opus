@@ -32,8 +32,15 @@ pub fn map_generation_system(
 // ── Tick advance ───────────────────────────────────────────────────────────
 
 /// Increments the global simulation tick counter each frame.
-pub fn tick_advance_system(mut sim_tick: ResMut<SimTick>) {
-    sim_tick.current += 1;
+/// Only increments if SimulationPlugin is NOT present (i.e., RunConfig absent).
+/// When SimulationPlugin is active, tick_increment_system owns SimTick.
+pub fn tick_advance_system(
+    run_config: Option<Res<crate::resources::RunConfig>>,
+    mut sim_tick: ResMut<SimTick>,
+) {
+    if run_config.is_none() {
+        sim_tick.current += 1;
+    }
 }
 
 // ── Hazard warning ─────────────────────────────────────────────────────────

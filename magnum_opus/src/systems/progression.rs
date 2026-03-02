@@ -19,8 +19,23 @@ use crate::events::{
     TierUnlockedProgression, RunWon, RunTimeUp, RunAbandoned,
 };
 use crate::resources::{
-    OpusTreeResource, OpusNodeEntry, ProductionRates, RunConfig, RunState, RunStatus, TierState,
+    OpusTreeResource, OpusNodeEntry, ProductionRates, RunConfig, RunState, RunStatus, SimTick, TierState,
 };
+
+// ─────────────────────────────────────────────────────────────────────────────
+// 0. Tick increment system
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Increments RunConfig.current_tick and optionally SimTick.current each frame.
+pub fn tick_increment_system(
+    mut run_config: ResMut<RunConfig>,
+    mut sim_tick: Option<ResMut<SimTick>>,
+) {
+    run_config.current_tick += 1;
+    if let Some(ref mut tick) = sim_tick {
+        tick.current = run_config.current_tick;
+    }
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // 1. Milestone check system

@@ -1,7 +1,7 @@
 use bevy::prelude::*;
 
 use crate::components::*;
-use crate::resources::Inventory;
+use crate::resources::{Inventory, ProductionRates};
 
 pub fn production_system(
     mut buildings: Query<(
@@ -15,7 +15,7 @@ pub fn production_system(
     groups: Query<(&GroupEnergy, &GroupControl), With<Group>>,
     mut inventory: Option<ResMut<Inventory>>,
 ) {
-    for (building, recipe, mut state, member, mut input_buf, mut output_buf) in
+    for (_building, recipe, mut state, member, mut input_buf, mut output_buf) in
         buildings.iter_mut()
     {
         let (ratio, paused) = groups
@@ -75,6 +75,40 @@ pub fn production_system(
                 state.active = false;
                 state.progress = 0.0;
             }
+        }
+    }
+}
+
+/// Updates ProductionRates with capacity-based throughput estimates.
+///
+/// For each building, computes `output_amount / duration_ticks * energy_ratio` as the
+/// theoretical production rate per tick. This reflects current capacity (powered buildings
+/// contribute their full throughput; unpowered buildings contribute 0) without waiting for
+/// a full production cycle to complete.
+///
+/// Rationale: OpusTree milestones track sustained *throughput*, not accumulated stock.
+/// Using capacity-based rates means a well-powered group registers its output rate from
+/// tick 1, and losing power immediately zeros the rate — matching both the S7 (win) and
+/// S3 (energy crisis) scenarios.
+pub fn production_rates_system(
+    buildings: Query<(&Recipe, &GroupMember), With<Building>>,
+    groups: Query<(&GroupEnergy, &GroupControl), With<Group>>,
+    mut rates: ResMut<ProductionRates>,
+) {
+    rates.rates.clear();
+    for (recipe, member) in buildings.iter() {
+        let (ratio, paused) = groups
+            .get(member.group_id)
+            .map(|(ge, ctrl)| (ge.ratio(), ctrl.status == GroupStatus::Paused))
+            .unwrap_or((0.0, false));
+
+        if paused || recipe.duration_ticks == 0 {
+            continue;
+        }
+
+        let rate_per_tick = ratio / recipe.duration_ticks as f32;
+        for (res, amount) in &recipe.outputs {
+            *rates.rates.entry(*res).or_default() += amount * rate_per_tick;
         }
     }
 }

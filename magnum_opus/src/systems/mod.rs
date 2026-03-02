@@ -10,7 +10,7 @@ pub mod terrain;
 pub use placement::placement_system;
 pub use groups::{group_formation_system, group_priority_system, group_pause_system};
 pub use power::energy_system;
-pub use production::production_system;
+pub use production::{production_system, production_rates_system};
 pub use manifold::manifold_system;
 pub use transport::{
     transport_placement_system,
@@ -34,6 +34,7 @@ pub mod trading;
 pub use trading::trading_system;
 pub mod progression;
 pub use progression::{
+    tick_increment_system,
     milestone_check_system,
     opus_tree_sync_system,
     run_lifecycle_system,

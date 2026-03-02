@@ -18,7 +18,7 @@ use crate::systems::terrain::{
     world_placement_system,
 };
 use crate::systems::progression::{
-    milestone_check_system, opus_tree_sync_system, run_lifecycle_system,
+    tick_increment_system, milestone_check_system, opus_tree_sync_system, run_lifecycle_system,
     tier_gate_system, building_tier_upgrade_system, mini_opus_system,
 };
 use crate::systems::creatures::{
@@ -81,11 +81,8 @@ impl Plugin for CreaturesPlugin {
             Phase::Transport.before(Phase::Creatures),
         );
 
-        // Creature events
-        app.add_message::<NestCleared>();
-        app.add_message::<TierUnlockedProgression>();
-
         // Creature systems
+        // Explicit ordering: pressure must accumulate before clearing is checked.
         app.add_systems(
             Update,
             (
@@ -94,7 +91,9 @@ impl Plugin for CreaturesPlugin {
                 creature_behavior_system.in_set(Phase::Creatures),
                 invasive_expansion_system.in_set(Phase::Creatures),
                 creature_loot_system.in_set(Phase::Creatures),
-                nest_clearing_system.in_set(Phase::Creatures),
+                nest_clearing_system
+                    .after(combat_pressure_system)
+                    .in_set(Phase::Creatures),
                 minion_task_system.in_set(Phase::Creatures),
             ),
         );
@@ -141,9 +140,16 @@ impl Plugin for SimulationPlugin {
         app.init_resource::<ProductionRates>();
         app.init_resource::<RunConfig>();
         app.init_resource::<RunState>();
+        app.init_resource::<SimTick>();
+        // UX resources
+        app.init_resource::<DashboardState>();
+        app.init_resource::<ChainVisualizerState>();
+        app.init_resource::<SimulationTick>();
+        app.init_resource::<CurrentTier>();
 
         app.add_message::<BuildingPlaced>();
         app.add_message::<BuildingRemoved>();
+        app.add_message::<BuildingDestroyed>();
         app.add_message::<SetGroupPriority>();
         app.add_message::<PauseGroup>();
         app.add_message::<ResumeGroup>();
@@ -170,6 +176,12 @@ impl Plugin for SimulationPlugin {
                 energy_system.in_set(Phase::Power),
                 production_system.in_set(Phase::Production),
                 manifold_system.in_set(Phase::Manifold),
+                production_rates_system
+                    .after(manifold_system)
+                    .in_set(Phase::Manifold),
+                trading_system
+                    .after(manifold_system)
+                    .in_set(Phase::Manifold),
                 // Transport: explicit order — destroy first, then place/upgrade, then move
                 transport_destroy_system.in_set(Phase::Transport),
                 transport_placement_system
@@ -183,7 +195,10 @@ impl Plugin for SimulationPlugin {
                     .after(transport_tier_upgrade_system)
                     .in_set(Phase::Transport),
                 // Progression phase systems
-                milestone_check_system.in_set(Phase::Progression),
+                tick_increment_system.in_set(Phase::Progression),
+                milestone_check_system
+                    .after(tick_increment_system)
+                    .in_set(Phase::Progression),
                 opus_tree_sync_system
                     .after(milestone_check_system)
                     .in_set(Phase::Progression),
@@ -197,5 +212,12 @@ impl Plugin for SimulationPlugin {
                 mini_opus_system.in_set(Phase::Progression),
             ),
         );
+
+        // UX systems — read final state, must run after all game logic phases
+        app.add_systems(Update, (
+            tick_system,
+            dashboard_system,
+            chain_visualizer_system,
+        ).after(Phase::Progression));
     }
 }

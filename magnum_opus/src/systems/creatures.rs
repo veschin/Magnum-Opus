@@ -243,10 +243,17 @@ pub fn nest_clearing_system(
 
 /// Accumulates CombatPressure on nests from nearby combat groups each tick.
 /// Pressure = sum of effective_protection_dps() for groups within nest territory_radius.
+///
+/// Two sources of CombatGroup are supported:
+/// 1. Buildings (ImpCamp / BreedingPen / WarLodge) with a GroupMember — group position is
+///    resolved via the group entity.
+/// 2. Group entities that directly carry a CombatGroup component — position is taken from the
+///    entity itself (used in integration tests that spawn combat groups directly).
 pub fn combat_pressure_system(
     mut nests: Query<(&CreatureNest, &mut CombatPressure, Option<&Position>)>,
     combat_buildings: Query<(&Building, &GroupMember, &CombatGroup)>,
     group_positions: Query<&Position, With<Group>>,
+    direct_groups: Query<(&CombatGroup, &Position), With<Group>>,
 ) {
     for (nest, mut pressure, nest_pos_opt) in nests.iter_mut() {
         if nest.cleared {
@@ -261,7 +268,7 @@ pub fn combat_pressure_system(
 
         let mut total_pressure = 0.0f32;
 
-        // For each combat building, find its group position and check coverage
+        // Source 1: CombatGroup on Building entities (normal in-game path)
         for (building, member, combat) in combat_buildings.iter() {
             match building.building_type {
                 BuildingType::ImpCamp | BuildingType::BreedingPen | BuildingType::WarLodge => {}
@@ -276,6 +283,17 @@ pub fn combat_pressure_system(
 
             let dx = (group_pos.0 - nest_pos.0) as f32;
             let dy = (group_pos.1 - nest_pos.1) as f32;
+            let dist = (dx * dx + dy * dy).sqrt();
+
+            if dist <= nest.territory_radius {
+                total_pressure += combat.effective_protection_dps();
+            }
+        }
+
+        // Source 2: CombatGroup directly on Group entities (integration test path)
+        for (combat, group_pos) in direct_groups.iter() {
+            let dx = (group_pos.x - nest_pos.0) as f32;
+            let dy = (group_pos.y - nest_pos.1) as f32;
             let dist = (dx * dx + dy * dy).sqrt();
 
             if dist <= nest.territory_radius {
