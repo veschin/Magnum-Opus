@@ -13,3 +13,4 @@ mod ux_bdd;
 mod world_bdd_systems;
 mod world_bdd_hazards;
 mod world_bdd_terrain;
+mod ecs_engine_bdd;
