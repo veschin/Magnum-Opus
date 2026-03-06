@@ -1,0 +1,43 @@
+# Fog of war rendering seed data
+
+# Three fog visual states
+fog_states:
+  unrevealed:
+    overlay: opaque_dark
+    color: [0.05, 0.05, 0.08, 1.0]  # near-black
+    description: "tile never seen"
+  revealed_out_of_range:
+    overlay: desaturation
+    desaturation_factor: 0.7  # 70% desaturated
+    description: "seen before but no watchtower coverage"
+  visible:
+    overlay: none
+    description: "within watchtower range, full brightness"
+
+# Test scene: 5x5 grid with mixed fog states
+test_fog_scene:
+  grid_size: 5
+  fog_map:
+    revealed: [[2,2], [3,2], [2,3], [3,3], [1,2], [2,1]]  # center cluster
+    watchtower_range:
+      center: [2, 2]
+      radius: 1  # only [1,2],[2,1],[2,2],[3,2],[2,3] in range
+  expected:
+    unrevealed_tiles: 19  # 25 - 6 revealed
+    desaturated_tiles: 1   # [3,3] revealed but outside watchtower radius=1
+    visible_tiles: 5        # within manhattan distance 1 of [2,2]
+
+# Edge: all tiles revealed
+all_revealed:
+  fog_map:
+    all_revealed: true
+  expected:
+    fog_overlay_entities: 0
+    no_visible_effect: true
+
+# Edge: no tiles revealed (start of game before startup)
+none_revealed:
+  fog_map:
+    revealed: []
+  expected:
+    all_tiles_opaque: true

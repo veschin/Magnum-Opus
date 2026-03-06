@@ -1,0 +1,65 @@
+# Lighting seed data
+
+# Directional light (sun)
+directional_light:
+  direction: [-0.5, -0.7, 0.5]  # top-left, toward viewer
+  color: [1.0, 0.95, 0.85]      # warm white
+  intensity: 1.0
+
+# Ambient (prevents full-black shadows)
+ambient:
+  color: [0.15, 0.12, 0.18]
+  strength: 0.3
+
+# Point lights by building type
+point_lights:
+  IronSmelter:
+    color: [1.0, 0.6, 0.2]   # forge orange
+    radius: 3.0               # tiles
+    intensity: 0.8
+  CopperSmelter:
+    color: [1.0, 0.5, 0.15]
+    radius: 3.0
+    intensity: 0.7
+  LavaGenerator:
+    color: [1.0, 0.3, 0.05]  # deep lava red-orange
+    radius: 4.0
+    intensity: 1.2
+  ManaReactor:
+    color: [0.3, 0.2, 0.9]   # arcane blue
+    radius: 4.0
+    intensity: 1.0
+  SacrificeAltar:
+    color: [0.6, 0.1, 0.8]   # dark purple
+    radius: 3.5
+    intensity: 0.9
+
+# Self-shadow from depth map
+self_shadow:
+  shadow_bias: 0.02
+  shadow_strength: 0.4
+  texel_offset: 1  # sample 1 texel toward light
+
+# Weather affects directional light
+weather_light_modifiers:
+  Clear:
+    color_mult: [1.0, 1.0, 1.0]
+    intensity_mult: 1.0
+  Rain:
+    color_mult: [0.7, 0.75, 0.85]  # cool desaturated
+    intensity_mult: 0.6
+  Storm:
+    color_mult: [0.5, 0.5, 0.6]    # dark
+    intensity_mult: 0.4
+  Heat:
+    color_mult: [1.1, 0.9, 0.7]    # warm orange shift
+    intensity_mult: 1.1
+
+# Weather transition: lerp over N frames (no pop)
+weather_transition_frames: 10
+
+# Edge: no point lights in scene (only ambient + directional)
+no_point_lights:
+  buildings: [Watchtower, WindTurbine]  # non-emissive types
+  expected_point_light_count: 0
+  scene_still_lit: true  # ambient + directional sufficient

@@ -1,0 +1,84 @@
+# Grid rendering seed data
+# Each terrain type maps to a visual config: height offset, base color
+
+terrain_visuals:
+  Grass:
+    height: 0.0
+    color: [0.35, 0.55, 0.25]  # muted green
+  IronVein:
+    height: 0.15
+    color: [0.45, 0.35, 0.30]  # rusty brown
+  CopperVein:
+    height: 0.15
+    color: [0.60, 0.40, 0.20]  # copper orange
+  StoneDeposit:
+    height: 0.10
+    color: [0.50, 0.50, 0.48]  # gray
+  WaterSource:
+    height: -0.10
+    color: [0.20, 0.35, 0.55]  # blue
+  ObsidianVein:
+    height: 0.20
+    color: [0.15, 0.10, 0.20]  # dark purple
+  ManaNode:
+    height: 0.10
+    color: [0.40, 0.20, 0.60]  # arcane purple
+  LavaSource:
+    height: -0.05
+    color: [0.80, 0.25, 0.05]  # lava orange
+    emissive: true
+
+# Scene: 4x4 grid with mixed terrain for testing
+test_scene_4x4:
+  grid_width: 4
+  grid_height: 4
+  tiles:
+    - pos: [0, 0]
+      terrain: Grass
+    - pos: [1, 0]
+      terrain: IronVein
+    - pos: [2, 0]
+      terrain: Grass
+    - pos: [3, 0]
+      terrain: Grass
+    - pos: [0, 1]
+      terrain: WaterSource
+    - pos: [1, 1]
+      terrain: Grass
+    - pos: [2, 1]
+      terrain: CopperVein
+    - pos: [3, 1]
+      terrain: Grass
+    - pos: [0, 2]
+      terrain: Grass
+    - pos: [1, 2]
+      terrain: StoneDeposit
+    - pos: [2, 2]
+      terrain: Grass
+    - pos: [3, 2]
+      terrain: LavaSource
+    - pos: [0, 3]
+      terrain: Grass
+    - pos: [1, 3]
+      terrain: Grass
+    - pos: [2, 3]
+      terrain: ManaNode
+    - pos: [3, 3]
+      terrain: Grass
+
+expected:
+  total_scene_entities: 16  # one per tile
+  tiles_with_height_offset: 7  # IronVein, CopperVein, StoneDeposit, WaterSource, ObsidianVein, ManaNode, LavaSource (minus those not in scene)
+  tiles_with_emission: 1  # LavaSource
+  all_tiles_have_unique_positions: true
+
+# Edge: grid boundary tiles
+edge_boundary:
+  - pos: [0, 0]
+    screen_position_valid: true
+  - pos: [63, 63]
+    screen_position_valid: true
+  - pos: [0, 63]
+    screen_position_valid: true
+  - pos: [63, 0]
+    screen_position_valid: true

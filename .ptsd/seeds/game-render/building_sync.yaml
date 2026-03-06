@@ -1,0 +1,86 @@
+# Building sync + group outline seed data
+
+# Building states and their visual mapping
+building_visual_states:
+  - state: Producing
+    material: active
+    shader_animation: true
+    description: "building is running its recipe"
+  - state: Idle
+    material: default
+    shader_animation: false
+    description: "no inputs available"
+  - state: NoEnergy
+    material: dimmed
+    shader_animation: false
+    description: "group has no energy allocation"
+  - state: Paused
+    material: yellow_tint
+    shader_animation: false
+    description: "player paused the group"
+
+# Group outline colors by state
+group_outline_colors:
+  Active: [0.2, 0.8, 0.2, 0.6]     # green, alpha 0.6
+  Paused: [0.8, 0.8, 0.2, 0.6]     # yellow
+  NoEnergy: [0.8, 0.2, 0.2, 0.6]   # red
+  Idle: [0.5, 0.5, 0.5, 0.4]       # gray, lower alpha
+
+# Test scene: 3 buildings in a group, 1 standalone
+test_building_scene:
+  buildings:
+    - type: IronMiner
+      pos: [10, 10]
+      group_id: 1
+      production_state: Producing
+    - type: IronMiner
+      pos: [11, 10]
+      group_id: 1
+      production_state: Producing
+    - type: IronSmelter
+      pos: [10, 11]
+      group_id: 1
+      production_state: Idle
+    - type: WindTurbine
+      pos: [20, 20]
+      group_id: 2
+      production_state: Producing
+
+expected:
+  scene_entities: 4
+  group_outlines: 2
+  group_1_outline_color: Active  # has energy, producing
+  group_2_outline_color: Active
+
+# Ghost preview states
+ghost_preview:
+  valid_placement:
+    pos: [15, 15]
+    terrain: Grass
+    building: Constructor
+    tint: [0.2, 0.8, 0.2, 0.5]  # green semi-transparent
+    expected_visible: true
+  invalid_placement:
+    pos: [10, 10]  # occupied
+    terrain: Grass
+    building: Constructor
+    tint: [0.8, 0.2, 0.2, 0.5]  # red semi-transparent
+    expected_visible: true
+  no_placement_mode:
+    expected_visible: false
+
+# Edge: building placed then removed — scene entity lifecycle
+building_lifecycle:
+  - action: place
+    type: CopperMiner
+    pos: [5, 5]
+    expected_scene_entity: spawned
+  - action: remove
+    pos: [5, 5]
+    expected_scene_entity: despawned
+
+# Edge: missing sprite asset
+missing_asset:
+  building_type: "UnknownBuildingType"
+  expected: magenta_placeholder_quad
+  no_panic: true

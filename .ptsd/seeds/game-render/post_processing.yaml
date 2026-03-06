@@ -1,0 +1,69 @@
+# Post-processing chain seed data
+# Order matters: outline -> toon -> posterize -> upscale
+
+render_target:
+  low_res_width: 480
+  low_res_height: 270
+  window_width: 1920
+  window_height: 1080
+  upscale_factor: 4  # 480*4=1920, 270*4=1080
+  upscale_filter: nearest_neighbor  # no bilinear, no blur
+
+pipeline_passes:
+  - name: outline
+    order: 1
+    method: sobel_edge_detection
+    inputs: [depth_buffer, normal_buffer]
+    params:
+      outline_threshold: 0.3
+      outline_color: [0.0, 0.0, 0.0, 1.0]  # black
+      kernel_size: 3  # 3x3 Sobel
+
+  - name: toon_shading
+    order: 2
+    method: luminance_quantization
+    params:
+      bands: 3
+      # Creates sharp light/shadow boundaries
+
+  - name: posterization
+    order: 3
+    method: color_depth_reduction
+    params:
+      levels_per_channel: 8
+      # 8^3 = 512 possible colors
+
+  - name: upscale
+    order: 4
+    method: nearest_neighbor_blit
+    params:
+      source: low_res_target
+      dest: window_framebuffer
+
+# Shader animation parameters
+shader_animations:
+  idle_bob:
+    amplitude: 0.02  # world units
+    frequency: 1.5   # Hz
+    phase_source: entity_id
+  wind_sway:
+    amplitude: 0.03
+    frequency: 0.8
+    applies_to: [TreeFarm, Sawmill]  # organic buildings
+  liquid_flow:
+    uv_scroll_speed: 0.4
+    applies_to: [Pipe, WaterPump, WaterWheel]
+  emission_pulse:
+    base_intensity: 0.6
+    pulse_amplitude: 0.3
+    pulse_frequency: 2.0
+    applies_to: [LavaGenerator, ManaReactor, SacrificeAltar]
+  rune_shimmer:
+    uv_scroll_speed: 0.5
+    applies_to: [RunePath]
+
+expected:
+  pass_count: 4
+  passes_in_order: [outline, toon_shading, posterization, upscale]
+  final_resolution: [1920, 1080]
+  pixel_art_look: true  # nearest-neighbor, no interpolation
