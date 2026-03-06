@@ -1,0 +1,111 @@
+# Player input actions seed data
+
+# Placement flow
+placement_flow:
+  # Step 1: select building from menu
+  select:
+    building_type: IronMiner
+    inventory_before: 4
+  # Step 2: ghost appears, cursor moves
+  ghost:
+    cursor_grid: [10, 10]
+    terrain: IronVein
+    tile_occupied: false
+    fog_revealed: true
+    ghost_color: valid  # green
+  # Step 3: left-click places
+  place:
+    click: left
+    expected_command: { type: PlaceBuilding, pos: [10, 10], building: IronMiner }
+    inventory_after: 3
+  # Step 4: right-click exits mode
+  exit:
+    click: right
+    expected_mode: normal  # no longer in placement
+
+# Invalid placement attempts
+invalid_placements:
+  - name: "occupied tile"
+    cursor_grid: [10, 10]
+    tile_occupied: true
+    click: left
+    expected_command: null
+    inventory_change: 0
+    ghost_color: invalid  # red
+  - name: "wrong terrain"
+    cursor_grid: [15, 15]
+    terrain: Grass
+    building: IronMiner  # requires IronVein
+    click: left
+    expected_command: null
+    inventory_change: 0
+    ghost_color: invalid
+  - name: "fogged tile"
+    cursor_grid: [50, 50]
+    fog_revealed: false
+    click: left
+    expected_command: null
+    inventory_change: 0
+    ghost_color: invalid
+
+# Removal flow
+removal:
+  context: "not in placement mode"
+  cursor_grid: [10, 10]
+  building_present: true
+  building_type: IronMiner
+  click: right
+  expected_command: { type: RemoveBuilding, pos: [10, 10] }
+  inventory_change: +1
+
+# Right-click with no building = no action
+removal_empty:
+  cursor_grid: [15, 15]
+  building_present: false
+  click: right
+  expected_command: null
+
+# Path drawing flow
+path_drawing:
+  mode_entry: "click transport button in UI"
+  path_type: Solid  # rune path
+  source_tile: [10, 10]  # group 1 boundary
+  dest_tile: [14, 10]    # group 2 boundary
+  intermediate: [[11, 10], [12, 10], [13, 10]]
+  validation:
+    no_building_overlap: true
+    no_existing_path: true
+  expected_command:
+    type: CreatePath
+    segments: [[10, 10], [11, 10], [12, 10], [13, 10], [14, 10]]
+    resource_class: Solid
+
+# Path drawing interrupted
+path_drawing_cancel:
+  source_tile: [10, 10]
+  partial_segments: [[10, 10], [11, 10]]
+  action: escape
+  expected_command: null  # discarded
+
+# Game speed
+game_speed:
+  - key: Space
+    action: toggle_pause
+  - key: "1"
+    action: set_speed
+    multiplier: 1
+  - key: "2"
+    action: set_speed
+    multiplier: 2
+  - key: "3"
+    action: set_speed
+    multiplier: 4
+
+# Edge: inventory reaches 0 during placement mode
+inventory_exhausted:
+  building_type: WindTurbine
+  inventory_before: 1
+  place_at: [20, 20]
+  inventory_after: 0
+  expected_mode: normal  # auto-exit
+  expected_notification: "Out of WindTurbine"

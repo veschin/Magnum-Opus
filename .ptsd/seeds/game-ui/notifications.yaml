@@ -1,0 +1,59 @@
+# Notification system seed data
+
+config:
+  max_visible: 5
+  auto_dismiss_seconds: 5
+  position: top_center
+  stack_direction: vertical_down
+
+# Notification types and their triggers
+notification_types:
+  - trigger_event: MilestoneReached
+    template: "Milestone reached: {resource}"
+    example: "Milestone reached: IronBar"
+    priority: high
+  - trigger_event: TierUnlocked
+    template: "Tier {tier} unlocked!"
+    example: "Tier 2 unlocked!"
+    priority: high
+  - trigger_event: NestCleared
+    template: "Nest cleared — {reward}"
+    example: "Nest cleared — Tier 2 unlocked!"
+    priority: high
+  - trigger_event: EnergyDeficit
+    template: "Energy deficit — {count} groups throttled"
+    example: "Energy deficit — 3 groups throttled"
+    priority: medium
+  - trigger_event: HazardWarning
+    template: "Hazard warning: {type} in {ticks} ticks"
+    example: "Hazard warning: lava eruption in 30 ticks"
+    priority: medium
+  - trigger_event: InventoryEmpty
+    template: "Out of {building_type}"
+    example: "Out of WindTurbine"
+    priority: low
+
+# Test: stacking behavior
+stack_test:
+  notifications:
+    - "Milestone reached: IronBar"
+    - "Milestone reached: CopperBar"
+    - "Energy deficit — 2 groups throttled"
+    - "Hazard warning: lava eruption in 30 ticks"
+    - "Tier 2 unlocked!"
+    - "Nest cleared — rare loot"  # 6th — exceeds max_visible
+  expected_visible: 5
+  expected_hidden: 1  # oldest auto-dismissed or queued
+
+# Edge: two identical notifications at same tick
+duplicate_notifications:
+  events:
+    - MilestoneReached { resource: IronBar }
+    - MilestoneReached { resource: IronBar }
+  expected_visible: 2  # no dedup, show both
+
+# Edge: pause freezes notification timer
+pause_behavior:
+  notification_age_seconds: 3
+  game_paused: true
+  expected_dismissed: false  # timer frozen while paused
