@@ -12,13 +12,14 @@ Magnum Opus — roguelike factory game. 1–2h runs, meta-progression, Factorio 
 - **Engine:** Bevy 0.18 (ECS-only, no rendering features yet)
 - **Architecture:** Simulation-first — zero engine dependencies in game logic, headless testing
 
-## Build & Test
+## Build & Run
 
 All code lives in `magnum_opus/` crate:
 
 ```bash
 cd magnum_opus && cargo build          # build
-cd magnum_opus && cargo test           # run all tests
+cd magnum_opus && cargo run            # run the game (1280x720 window)
+cd magnum_opus && cargo test           # run all tests (421 tests)
 cd magnum_opus && cargo test <name>    # run single test by name
 ```
 
@@ -27,7 +28,7 @@ cd magnum_opus && cargo test <name>    # run single test by name
 - **Simulation-first:** game is a deterministic numerical simulation; rendering is a separate read-only layer
 - **ECS paradigm:** entities (IDs), components (pure data structs), systems (functions), resources (global singletons)
 - **Command sourcing:** player actions are serialized commands, never direct world mutations
-- **Phase-ordered tick pipeline:** design targets 10 phases (Input → World → Creatures → Energy → Production → Transport → Combat → Progression → Cleanup → Meta); currently 9 implemented in `Phase` enum: Input → Groups → Power → Production → Manifold → Transport → Progression → Creatures → World
+- **Phase-ordered tick pipeline:** 9 phases in strict order: Input → Groups → Power → Production → Manifold → Transport → Progression → Creatures → World. See ARCH.md section 13 for full ordering invariants, resource ownership, and event flow guarantees
 - **Event bus:** systems communicate via events, never direct calls
 - **Data-driven content:** all game content loaded from static data files (RecipeDB, BuildingDB, BiomeDB, etc.)
 
@@ -45,24 +46,38 @@ Resource conservation, grid alignment, determinism, group connectivity, single g
 | `.ptsd/docs/PRD.md` | Product requirements — 8 features |
 | `docs/ideas.yaml` | Ideas registry (35 ideas) |
 | `docs/ENGINE_PoC.md` | Bevy ECS proof-of-concept results |
-| `magnum_opus/` | Main crate — 384 tests, 8 features |
+| `magnum_opus/` | Main crate — 421 tests, 8 features |
 
 ## Code Structure (magnum_opus/src/)
 
 ```
-lib.rs              — plugin registration, phase ordering
+lib.rs              — simulation plugins + phase ordering (SimulationPlugin, WorldPlugin, CreaturesPlugin)
+main.rs             — app entry point, composes all plugins
 components.rs       — all ECS component structs
-resources.rs        — global singleton resources (Grid, PlacementCommands, EnergyPool)
-events.rs           — event types (BuildingPlaced, BuildingRemoved)
-systems/            — one file per system (placement, groups, power, production, manifold, transport, ux, terrain, trading)
+resources.rs        — global singleton resources (Grid, EnergyPool, Inventory, etc.)
+events.rs           — event types (BuildingPlaced, BuildingRemoved, etc.)
+systems/            — one file per system (placement, groups, power, production, manifold, transport, ux, terrain, trading, progression, creatures)
+render/             — presentation layer (camera, grid, buildings, transport, creatures, fog, overlays, ghost)
+input/              — player input handling (placement clicks, path drawing, game speed)
+ui/                 — egui panels (build menu, energy bar, inventory, minimap)
+startup.rs          — initial world setup (starting kit, terrain generation)
+audit.rs            — runtime invariant checks
 tests/              — BDD tests (one file per feature) + legacy unit tests
 ```
 
-### Plugins (defined in lib.rs)
+### Plugins
 
-- **SimulationPlugin** — registers all core systems (placement, groups, energy, production, manifold, transport, progression) with phase ordering, plus core resources (Grid, EnergyPool, Inventory, etc.) and events. Used by most feature tests.
-- **WorldPlugin** — registers world/biome systems (tick, hazards, weather, fog, element interactions) with separate resources (SimTick, CurrentWeather, ActiveBiome). Used by world BDD tests.
-- **CreaturesPlugin** — registers creature & combat systems (behavior, expansion, combat, pressure, nests, loot, minions) in Phase::Creatures. Added on top of SimulationPlugin for creature scenarios.
+**Simulation (headless, used in tests):**
+- **SimulationPlugin** — core game logic: placement, groups, energy, production, manifold, transport, progression. Configurable grid size. All tests use this.
+- **WorldPlugin** — world/biome systems: tick, hazards, weather, fog, element interactions. Can run standalone (world BDD tests) or layered on SimulationPlugin.
+- **CreaturesPlugin** — creature & combat systems: behavior, expansion, combat, pressure, nests, loot, minions. Layered on SimulationPlugin.
+
+**Runtime (game window only, NOT used in tests):**
+- **RenderPlugin** — 3D visualization: camera, grid meshes, building/transport/creature sync, fog, overlays
+- **InputPlugin** — mouse-to-grid raycasting, click-to-place, right-click-remove, path drawing, game speed/pause
+- **UiPlugin** — egui UI panels: build menu, energy bar, inventory, minimap
+- **StartupPlugin** — initial world generation and starting kit
+- **AuditPlugin** — runtime invariant assertions
 
 ### Bevy 0.18 API Notes
 
@@ -85,21 +100,7 @@ No mocks for internal code. Real ECS, real data.
 
 building-groups, transport, world, creatures, progression, meta, energy, ux
 
-All features implemented and reviewed (scores 7-8/10). 384 tests, 0 failures.
-
-### System → Phase Mapping (lib.rs)
-
-| Phase | Systems |
-|-------|---------|
-| Input | placement_system |
-| Groups | group_formation_system, group_priority_system, group_pause_system |
-| Power | energy_system |
-| Production | production_system |
-| Manifold | manifold_system |
-| Transport | transport_destroy_system, transport_placement_system, transport_tier_upgrade_system, transport_movement_system |
-| Progression | milestone_check_system, opus_tree_sync_system, run_lifecycle_system, tier_gate_system, building_tier_upgrade_system, mini_opus_system |
-| Creatures (CreaturesPlugin) | creature_behavior_system, invasive_expansion_system, combat_group_system, combat_pressure_system, nest_clearing_system, creature_loot_system, minion_task_system |
-| World (WorldPlugin) | tick_advance, hazard_warning, hazard_trigger, element_interaction, weather_tick, fog_of_war, world_placement |
+All features implemented and reviewed (scores 7-8/10). 421 tests, 0 failures. System-to-phase mapping is in `lib.rs`; full ordering invariants in ARCH.md section 13.
 
 ## Design Vocabulary
 

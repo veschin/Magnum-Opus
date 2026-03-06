@@ -2,6 +2,7 @@ pub mod components;
 pub mod resources;
 pub mod events;
 pub mod systems;
+pub mod data;
 
 #[cfg(test)]
 mod tests;
@@ -44,7 +45,9 @@ pub struct WorldPlugin;
 
 impl Plugin for WorldPlugin {
     fn build(&self, app: &mut App) {
+        // Also in SimulationPlugin — init_resource/add_message are idempotent
         app.init_resource::<SimTick>();
+        app.add_message::<BuildingDestroyed>();
         app.init_resource::<CurrentWeather>();
         app.init_resource::<ActiveBiome>();
         app.init_resource::<BiomeQualityMap>();
@@ -52,11 +55,16 @@ impl Plugin for WorldPlugin {
         app.init_resource::<WorldPlacementCommands>();
         app.init_resource::<FixedRng>();
 
-        app.add_message::<BuildingDestroyed>();
         app.add_message::<SacrificeHit>();
         app.add_message::<SacrificeMiss>();
         app.add_message::<PlacementRejected>();
         app.add_message::<HazardTriggered>();
+
+        // World runs after Progression (and after Creatures if CreaturesPlugin is loaded)
+        app.configure_sets(
+            Update,
+            Phase::Progression.before(Phase::World),
+        );
 
         app.add_systems(Update, (
             tick_advance_system,
@@ -66,7 +74,7 @@ impl Plugin for WorldPlugin {
             weather_tick_system,
             fog_of_war_system,
             world_placement_system,
-        ).chain());
+        ).chain().in_set(Phase::World));
     }
 }
 
@@ -128,6 +136,7 @@ impl Plugin for SimulationPlugin {
         app.insert_resource(Grid::new(self.grid_width, self.grid_height));
         app.init_resource::<EnergyPool>();
         app.init_resource::<PlacementCommands>();
+        app.init_resource::<RemoveBuildingCommands>();
         app.init_resource::<Inventory>();
         app.init_resource::<TierState>();
         app.init_resource::<FogMap>();

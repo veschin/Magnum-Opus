@@ -11,51 +11,9 @@ use std::collections::HashMap;
 
 use crate::components::*;
 use crate::resources::*;
+use crate::data::default_recipe;
 use crate::systems::placement::PlacementCommands;
 use crate::SimulationPlugin;
-
-// ═════════════════════════════════════════════════════════════════════════════
-// Recipes (3× faster than seed data for more observable cycles)
-// ═════════════════════════════════════════════════════════════════════════════
-
-fn wt_recipe() -> Recipe {
-    Recipe::simple(vec![], vec![], 1)
-}
-
-fn iron_miner_recipe() -> Recipe {
-    Recipe::simple(vec![], vec![(ResourceType::IronOre, 1.0)], 20)
-}
-
-fn copper_miner_recipe() -> Recipe {
-    Recipe::simple(vec![], vec![(ResourceType::CopperOre, 1.0)], 20)
-}
-
-fn iron_smelter_recipe() -> Recipe {
-    Recipe::simple(
-        vec![(ResourceType::IronOre, 2.0)],
-        vec![(ResourceType::IronBar, 1.0)],
-        40,
-    )
-}
-
-fn copper_smelter_recipe() -> Recipe {
-    Recipe::simple(
-        vec![(ResourceType::CopperOre, 2.0)],
-        vec![(ResourceType::CopperBar, 1.0)],
-        40,
-    )
-}
-
-fn constructor_recipe() -> Recipe {
-    Recipe::mall(
-        vec![
-            (ResourceType::IronBar, 3.0),
-            (ResourceType::CopperBar, 1.0),
-        ],
-        vec![(ResourceType::ItemIronMiner, 1.0)],
-        80,
-    )
-}
 
 // ═════════════════════════════════════════════════════════════════════════════
 // State tracking
@@ -475,8 +433,10 @@ fn simulation_demo() {
     println!("═══════════════════════════════════════════════════════════════════");
     println!();
     println!("  Scenario: Iron + Copper extraction → smelting → transport → mall");
-    println!("  Goal: Constructor produces ItemIronMiner → Inventory");
-    println!("  Recipes at 3× speed (20/40/80 ticks instead of 60/120/300)");
+    println!("  Goal: Ore and bar production in 500 ticks using default recipes");
+    println!("  Recipes: default seed rates (60/120/300 ticks)");
+    println!("  Note: Constructor needs IronBar + Plank; no plank source in demo,");
+    println!("        so constructor will not fire. Assertions cover ore and bars only.");
     println!();
     println!("  MAP (30×15):");
     println!("  y=2:  [WT][IM][IM][IS]  ════ IronBar path ═══════════╗");
@@ -491,14 +451,14 @@ fn simulation_demo() {
     println!("  Groups:");
     println!("    #1 Iron:   WT+2×IM+IS   gen=20 dem=20  IronOre → IronBar");
     println!("    #2 Copper: WT+CM+CS     gen=20 dem=15  CopperOre → CopperBar");
-    println!("    #3 Mall:   2×WT+Constr  gen=40 dem=15  3 IronBar + 1 CopperBar → ItemIronMiner");
+    println!("    #3 Mall:   2×WT+Constr  gen=40 dem=15  3 IronBar + 1 Plank → ItemIronMiner (no plank source)");
     println!();
-    println!("  Recipes:");
-    println!("    IronMiner:     [] → 1 IronOre          20 ticks  energy=5");
-    println!("    CopperMiner:   [] → 1 CopperOre        20 ticks  energy=5");
-    println!("    IronSmelter:   2 IronOre → 1 IronBar   40 ticks  energy=10");
-    println!("    CopperSmelter: 2 CopperOre → 1 CopperBar  40 ticks  energy=10");
-    println!("    Constructor:   3 IronBar + 1 CopperBar → 1 ItemIronMiner  80 ticks  energy=15");
+    println!("  Recipes (default):");
+    println!("    IronMiner:     [] → 1 IronOre          60 ticks  energy=5");
+    println!("    CopperMiner:   [] → 1 CopperOre        60 ticks  energy=5");
+    println!("    IronSmelter:   2 IronOre → 1 IronBar   120 ticks  energy=10");
+    println!("    CopperSmelter: 2 CopperOre → 1 CopperBar  120 ticks  energy=10");
+    println!("    Constructor:   3 IronBar + 1 Plank → 1 ItemIronMiner  300 ticks  energy=15");
     println!();
 
     // ─── Setup ───────────────────────────────────────────────────────────
@@ -524,31 +484,31 @@ fn simulation_demo() {
         let mut cmds = app.world_mut().resource_mut::<PlacementCommands>();
         // Iron group (y=2)
         cmds.queue
-            .push((BuildingType::WindTurbine, 1, 2, wt_recipe()));
+            .push((BuildingType::WindTurbine, 1, 2, default_recipe(BuildingType::WindTurbine)));
         cmds.queue
-            .push((BuildingType::IronMiner, 2, 2, iron_miner_recipe()));
+            .push((BuildingType::IronMiner, 2, 2, default_recipe(BuildingType::IronMiner)));
         cmds.queue
-            .push((BuildingType::IronMiner, 3, 2, iron_miner_recipe()));
+            .push((BuildingType::IronMiner, 3, 2, default_recipe(BuildingType::IronMiner)));
         cmds.queue
-            .push((BuildingType::IronSmelter, 4, 2, iron_smelter_recipe()));
+            .push((BuildingType::IronSmelter, 4, 2, default_recipe(BuildingType::IronSmelter)));
         // Copper group (y=8)
         cmds.queue
-            .push((BuildingType::WindTurbine, 1, 8, wt_recipe()));
+            .push((BuildingType::WindTurbine, 1, 8, default_recipe(BuildingType::WindTurbine)));
         cmds.queue
-            .push((BuildingType::CopperMiner, 2, 8, copper_miner_recipe()));
+            .push((BuildingType::CopperMiner, 2, 8, default_recipe(BuildingType::CopperMiner)));
         cmds.queue.push((
             BuildingType::CopperSmelter,
             3,
             8,
-            copper_smelter_recipe(),
+            default_recipe(BuildingType::CopperSmelter),
         ));
         // Mall group (y=5, x=14+)
         cmds.queue
-            .push((BuildingType::WindTurbine, 14, 5, wt_recipe()));
+            .push((BuildingType::WindTurbine, 14, 5, default_recipe(BuildingType::WindTurbine)));
         cmds.queue
-            .push((BuildingType::WindTurbine, 15, 5, wt_recipe()));
+            .push((BuildingType::WindTurbine, 15, 5, default_recipe(BuildingType::WindTurbine)));
         cmds.queue
-            .push((BuildingType::Constructor, 16, 5, constructor_recipe()));
+            .push((BuildingType::Constructor, 16, 5, default_recipe(BuildingType::Constructor)));
     }
 
     // Tick 1: placement + group formation + first production tick
@@ -788,8 +748,8 @@ fn simulation_demo() {
         pass(!tracker.total_transported.is_empty())
     );
     println!(
-        "    Items crafted (≥1):   {}",
-        pass(tracker.items_crafted >= 1)
+        "    Items crafted:        {} (constructor needs Plank — expected 0)",
+        tracker.items_crafted
     );
     println!(
         "    Energy stable:        {}",
@@ -805,4 +765,341 @@ fn simulation_demo() {
     assert!(copper_ore > 0.0, "No copper ore produced!");
     assert!(copper_bar > 0.0, "No copper bars smelted!");
     assert!(transport_ok, "Transport setup failed!");
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// MVP DEMO SMOKE TEST
+// Validates ALL wiring fixes work together: SimulationPlugin + WorldPlugin
+// ═════════════════════════════════════════════════════════════════════════════
+
+#[test]
+fn mvp_demo_smoke_test() {
+    use crate::WorldPlugin;
+
+    println!("\n");
+    println!("═══════════════════════════════════════════════════════════════════");
+    println!("  MAGNUM OPUS — MVP DEMO SMOKE TEST");
+    println!("═══════════════════════════════════════════════════════════════════");
+    println!();
+    println!("  Scenario: Full demo wiring — SimulationPlugin + WorldPlugin");
+    println!("  Grid: 64×64, 200 ticks");
+    println!("  Iron cluster @ (10,10)±2, Copper cluster @ (20,10)±2");
+    println!("  Buildings: WT+2xIronMiner+IronSmelter, WT+2xCopperMiner+CopperSmelter, 2xWT+Constructor");
+    println!();
+
+    // ─── App setup ───────────────────────────────────────────────────────────
+    let mut app = App::new();
+    app.add_plugins(MinimalPlugins);
+    app.add_plugins(SimulationPlugin { grid_width: 64, grid_height: 64 });
+    app.add_plugins(WorldPlugin);
+
+    // ─── Terrain: replicate setup_terrain iron+copper clusters ───────────────
+    {
+        let mut grid = app.world_mut().resource_mut::<Grid>();
+        // Iron cluster near (10,10)
+        for dy in -2i32..=2 {
+            for dx in -2i32..=2 {
+                let x = 10 + dx;
+                let y = 10 + dy;
+                if grid.in_bounds(x, y) {
+                    grid.terrain.insert((x, y), TerrainType::IronVein);
+                }
+            }
+        }
+        // Copper cluster near (20,10)
+        for dy in -2i32..=2 {
+            for dx in -2i32..=2 {
+                let x = 20 + dx;
+                let y = 10 + dy;
+                if grid.in_bounds(x, y) {
+                    grid.terrain.insert((x, y), TerrainType::CopperVein);
+                }
+            }
+        }
+    }
+
+    // ─── Fog: reveal all ─────────────────────────────────────────────────────
+    app.world_mut().resource_mut::<FogMap>().reveal_all(64, 64);
+
+    // ─── Queue demo buildings (mirrors setup_demo_buildings) ─────────────────
+    {
+        let mut cmds = app.world_mut().resource_mut::<PlacementCommands>();
+        // Iron group
+        cmds.queue.push((BuildingType::WindTurbine,  8,  10, default_recipe(BuildingType::WindTurbine)));
+        cmds.queue.push((BuildingType::IronMiner,    9,  10, default_recipe(BuildingType::IronMiner)));
+        cmds.queue.push((BuildingType::IronMiner,   10,  10, default_recipe(BuildingType::IronMiner)));
+        cmds.queue.push((BuildingType::IronSmelter, 11,  10, default_recipe(BuildingType::IronSmelter)));
+        // Copper group
+        cmds.queue.push((BuildingType::WindTurbine,   18, 10, default_recipe(BuildingType::WindTurbine)));
+        cmds.queue.push((BuildingType::CopperMiner,   19, 10, default_recipe(BuildingType::CopperMiner)));
+        cmds.queue.push((BuildingType::CopperMiner,   20, 10, default_recipe(BuildingType::CopperMiner)));
+        cmds.queue.push((BuildingType::CopperSmelter, 21, 10, default_recipe(BuildingType::CopperSmelter)));
+        // Mall group
+        cmds.queue.push((BuildingType::WindTurbine, 13, 12, default_recipe(BuildingType::WindTurbine)));
+        cmds.queue.push((BuildingType::WindTurbine, 14, 12, default_recipe(BuildingType::WindTurbine)));
+        cmds.queue.push((BuildingType::Constructor, 15, 12, default_recipe(BuildingType::Constructor)));
+    }
+
+    // ─── Run 200 ticks ───────────────────────────────────────────────────────
+    println!("  Running 200 ticks...");
+    for _ in 0..200 {
+        app.update();
+    }
+    println!("  Done.");
+    println!();
+
+    // ═════════════════════════════════════════════════════════════════════════
+    // ASSERTIONS + DIAGNOSTICS
+    // ═════════════════════════════════════════════════════════════════════════
+
+    // ── 1. Buildings spawned ──────────────────────────────────────────────────
+    let building_count = {
+        let mut bq = app.world_mut().query::<&Building>();
+        bq.iter(app.world()).count()
+    };
+    println!("  [1] Buildings spawned: {}", building_count);
+    // Constructor is 2×2, so it spawns 1 entity but occupies 4 cells.
+    // All 11 placement commands should result in at least 11 Building entities.
+    assert!(
+        building_count >= 11,
+        "Expected >=11 buildings, got {}",
+        building_count
+    );
+
+    // ── 2. Groups formed ─────────────────────────────────────────────────────
+    let group_count = {
+        let mut gq = app.world_mut().query::<(Entity, &GroupEnergy)>();
+        gq.iter(app.world()).count()
+    };
+    println!("  [2] Groups formed: {}", group_count);
+    assert!(
+        group_count >= 3,
+        "Expected >=3 groups (iron, copper, mall), got {}",
+        group_count
+    );
+
+    // ── 3. Energy working ─────────────────────────────────────────────────────
+    let (e_gen, e_demand, e_ratio) = {
+        let e = app.world().resource::<EnergyPool>();
+        (e.total_generation, e.total_consumption, e.ratio)
+    };
+    println!(
+        "  [3] Energy: gen={:.1}  demand={:.1}  ratio={:.2}",
+        e_gen, e_demand, e_ratio
+    );
+    assert!(e_gen > 0.0, "Energy generation is zero — WindTurbines not working");
+    assert!(
+        e_ratio >= 1.0,
+        "Energy ratio {:.2} < 1.0 — demand exceeds supply",
+        e_ratio
+    );
+
+    // ── 4. Production happening ───────────────────────────────────────────────
+    let (active_count, any_progress) = {
+        let mut pq = app.world_mut().query::<&ProductionState>();
+        let mut active = 0usize;
+        let mut progress = false;
+        for ps in pq.iter(app.world()) {
+            if ps.active {
+                active += 1;
+            }
+            if ps.progress > 0.0 {
+                progress = true;
+            }
+        }
+        (active, progress)
+    };
+    println!(
+        "  [4] Production: {} buildings active, progress_nonzero={}",
+        active_count, any_progress
+    );
+    assert!(
+        active_count > 0 || any_progress,
+        "No production activity after 200 ticks — all buildings idle"
+    );
+
+    // ── 5. Manifolds have resources ───────────────────────────────────────────
+    let (manifold_count, any_nonempty) = {
+        let mut mq = app.world_mut().query::<&Manifold>();
+        let count = mq.iter(app.world()).count();
+        let nonempty = mq
+            .iter(app.world())
+            .any(|m| m.resources.values().any(|&v| v > 0.001));
+        (count, nonempty)
+    };
+    println!(
+        "  [5] Manifolds: {} total, any_nonempty={}",
+        manifold_count, any_nonempty
+    );
+    assert!(manifold_count >= 3, "Expected >=3 manifolds, got {}", manifold_count);
+    assert!(any_nonempty, "All manifolds empty after 200 ticks");
+
+    // ── 6 & 7. IronOre and CopperOre in manifolds ────────────────────────────
+    let (iron_ore_total, copper_ore_total) = {
+        let mut mq = app.world_mut().query::<&Manifold>();
+        let mut iron = 0.0f32;
+        let mut copper = 0.0f32;
+        for m in mq.iter(app.world()) {
+            iron += m.resources.get(&ResourceType::IronOre).copied().unwrap_or(0.0);
+            copper += m.resources.get(&ResourceType::CopperOre).copied().unwrap_or(0.0);
+        }
+        (iron, copper)
+    };
+    println!(
+        "  [6] IronOre in manifolds: {:.1}",
+        iron_ore_total
+    );
+    println!(
+        "  [7] CopperOre in manifolds: {:.1}",
+        copper_ore_total
+    );
+    // After 200 ticks: miners cycle every 60t → ~3 cycles per miner.
+    // Smelter consumes 2 ore per cycle (120t) → ~1 cycle.
+    // Net ore should be positive (either accumulating or being smelted).
+    // We accept either: ore > 0 in manifold OR IronBar was produced (ore consumed).
+    let iron_bar_in_manifold = {
+        let mut mq = app.world_mut().query::<&Manifold>();
+        mq.iter(app.world())
+            .map(|m| m.resources.get(&ResourceType::IronBar).copied().unwrap_or(0.0))
+            .sum::<f32>()
+    };
+    let copper_bar_in_manifold = {
+        let mut mq = app.world_mut().query::<&Manifold>();
+        mq.iter(app.world())
+            .map(|m| m.resources.get(&ResourceType::CopperBar).copied().unwrap_or(0.0))
+            .sum::<f32>()
+    };
+    println!("  [8] IronBar in manifolds: {:.1}", iron_bar_in_manifold);
+    println!("      CopperBar in manifolds: {:.1}", copper_bar_in_manifold);
+
+    assert!(
+        iron_ore_total > 0.0 || iron_bar_in_manifold > 0.0,
+        "No iron production activity — neither IronOre nor IronBar present after 200 ticks"
+    );
+    assert!(
+        copper_ore_total > 0.0 || copper_bar_in_manifold > 0.0,
+        "No copper production activity — neither CopperOre nor CopperBar present after 200 ticks"
+    );
+
+    // ── 9. Grid terrain correct ───────────────────────────────────────────────
+    let terrain_at_10_10 = {
+        let grid = app.world().resource::<Grid>();
+        grid.terrain.get(&(10, 10)).copied()
+    };
+    println!(
+        "  [9] Terrain @ (10,10): {:?}",
+        terrain_at_10_10
+    );
+    assert_eq!(
+        terrain_at_10_10,
+        Some(TerrainType::IronVein),
+        "Terrain at (10,10) should be IronVein"
+    );
+
+    let terrain_at_20_10 = {
+        let grid = app.world().resource::<Grid>();
+        grid.terrain.get(&(20, 10)).copied()
+    };
+    println!(
+        "       Terrain @ (20,10): {:?}",
+        terrain_at_20_10
+    );
+    assert_eq!(
+        terrain_at_20_10,
+        Some(TerrainType::CopperVein),
+        "Terrain at (20,10) should be CopperVein"
+    );
+
+    // ── 10. Fog revealed ──────────────────────────────────────────────────────
+    let fog_revealed = {
+        let fog = app.world().resource::<FogMap>();
+        fog.is_visible(10, 10)
+    };
+    println!("  [10] Fog revealed @ (10,10): {}", fog_revealed);
+    assert!(fog_revealed, "Fog at (10,10) should be revealed");
+
+    // ── 11. Phase ordering: WorldPlugin SimTick advancing ────────────────────
+    let sim_tick_value = {
+        let st = app.world().resource::<SimTick>();
+        st.current
+    };
+    println!("  [11] SimTick.current after 200 ticks: {}", sim_tick_value);
+    assert!(
+        sim_tick_value > 0,
+        "SimTick.current is 0 — tick_advance_system (WorldPlugin Phase::World) never ran"
+    );
+
+    // ─── Full diagnostic summary ──────────────────────────────────────────────
+    println!();
+    println!("  ┌── FINAL DIAGNOSTIC SUMMARY ─────────────────────────────────────┐");
+    println!("  │  Buildings: {}", building_count);
+    println!("  │  Groups:    {}", group_count);
+    println!(
+        "  │  Energy:    gen={:.1}  demand={:.1}  ratio={:.2}",
+        e_gen, e_demand, e_ratio
+    );
+    println!("  │  SimTick:   {}", sim_tick_value);
+    println!("  │");
+    println!("  │  Manifold contents across all groups:");
+
+    {
+        let mut mq = app
+            .world_mut()
+            .query::<(Entity, &Manifold, Option<&GroupPosition>)>();
+        let groups: Vec<_> = mq
+            .iter(app.world())
+            .map(|(e, m, gp)| (e, m.resources.clone(), gp.map(|p| (p.x, p.y))))
+            .collect();
+        for (entity, resources, pos) in &groups {
+            let res_str: Vec<String> = resources
+                .iter()
+                .filter(|(_, v)| **v > 0.001)
+                .map(|(r, v)| format!("{:?}={:.1}", r, v))
+                .collect();
+            if let Some((gx, gy)) = pos {
+                println!(
+                    "  │    Group {:?} @ ({},{}): {}",
+                    entity,
+                    gx,
+                    gy,
+                    if res_str.is_empty() { "(empty)".to_string() } else { res_str.join(", ") }
+                );
+            } else {
+                println!(
+                    "  │    Group {:?}: {}",
+                    entity,
+                    if res_str.is_empty() { "(empty)".to_string() } else { res_str.join(", ") }
+                );
+            }
+        }
+    }
+
+    println!("  │");
+    println!("  │  Production states:");
+    {
+        let mut bq = app
+            .world_mut()
+            .query::<(&Position, &Building, &ProductionState)>();
+        let mut blds: Vec<_> = bq
+            .iter(app.world())
+            .map(|(p, b, ps)| (p.x, p.y, b.building_type, ps.active, ps.progress, ps.idle_reason))
+            .collect();
+        blds.sort_by_key(|(x, y, _, _, _, _)| (*y, *x));
+        for (x, y, bt, active, progress, idle) in &blds {
+            let status = if *active {
+                format!("active  progress={:.3}", progress)
+            } else if let Some(reason) = idle {
+                format!("idle({:?})", reason)
+            } else {
+                "idle".to_string()
+            };
+            println!("  │    {:?}@({},{}) {}", bt, x, y, status);
+        }
+    }
+
+    println!("  └────────────────────────────────────────────────────────────────┘");
+    println!();
+    println!("═══════════════════════════════════════════════════════════════════");
+    println!("  ALL SMOKE TEST ASSERTIONS PASSED");
+    println!("═══════════════════════════════════════════════════════════════════");
 }
