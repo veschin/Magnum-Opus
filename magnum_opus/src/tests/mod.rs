@@ -15,3 +15,4 @@ mod world_bdd_hazards;
 mod world_bdd_terrain;
 mod ecs_engine_bdd;
 mod simulation_demo;
+mod game_startup_bdd;
