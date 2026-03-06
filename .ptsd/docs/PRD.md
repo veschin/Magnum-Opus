@@ -438,3 +438,222 @@ Verify that all 8 features work together through real ECS pipelines.
 - Combined SimTick (WorldPlugin) and SimulationTick (UX) counters must not desync
 - Groups spawned by group_formation_system must have position data for combat_pressure_system range checks
 - Trading system must be registered and functional when SimulationPlugin is active
+
+---
+
+<!-- feature:game-startup -->
+### F10: Game Startup
+
+Initialize all run state before the first simulation tick: recipe database validation, terrain generation, starting kit, opus tree, fog, and run configuration.
+
+**Problem:** The simulation layer (8 features, 421 tests) assumes that Grid terrain is populated, Inventory contains a starting kit, OpusTreeResource has milestone nodes, FogMap has a revealed area, and RunConfig is configured. Currently, tests set these up manually per scenario. A real game run needs a single `GameStartupPlugin` that writes all required ECS state in the Bevy `Startup` schedule so that the first `Update` tick finds a fully initialized world. Without this, the simulation has no terrain to check, no buildings to place, no milestones to track, and no fog to enforce.
+
+**How it works:**
+
+1. **Recipe validation** — On startup, iterate every `BuildingType` variant and call `default_recipe(bt)`. Validate invariants: extractors (buildings with `terrain_req() == Some(_)`) must have empty `inputs`; mall buildings (Constructor, Toolmaker, Assembler) must have `output_to_inventory: true`; energy buildings (WindTurbine, WaterWheel, LavaGenerator, ManaReactor) and utility buildings (Watchtower, Trader, SacrificeAltar) must have `duration_ticks == 1`. Panic on violation — broken recipes must never reach the simulation.
+
+2. **Terrain generation** — Deterministic seed-based generation on a 64x64 grid. Uses the run seed to place terrain types. Default terrain is Grass. Resource veins (IronVein, CopperVein, StoneDeposit, WaterSource) are placed as clusters near predetermined positions to guarantee extractable resources within the starting area. Advanced terrain (ObsidianVein, ManaNode, LavaSource) is placed farther from spawn for T2/T3 gameplay. Same seed always produces identical terrain (determinism invariant). Writes to `Grid.terrain`.
+
+3. **Starting kit** — Populates `Inventory.buildings` with T1 buildings sufficient to bootstrap first extraction group and Mall: 4x IronMiner, 2x CopperMiner, 2x StoneQuarry, 2x WaterPump, 2x IronSmelter, 1x CopperSmelter, 1x Sawmill, 1x TreeFarm, 1x Constructor, 3x WindTurbine, 1x Watchtower. Total: 20 buildings across 10 types. All buildings in the kit must be tier 1 (`building.tier() == 1`).
+
+4. **Opus tree initialization** — Populates `OpusTreeResource.main_path` with 7 milestone nodes representing the main production chain: IronBar (T1) -> CopperBar (T1) -> Plank (T1) -> SteelPlate (T2) -> RefinedCrystal (T2) -> RunicAlloy (T3) -> OpusIngot (T3). Each node specifies a `ResourceType` and `required_rate` (items/min) appropriate to its tier and recipe complexity. Sets `sustain_ticks_required = 600`. All nodes start with `current_rate = 0.0` and `sustained = false`.
+
+5. **Fog initialization** — Reveals cells within Manhattan distance radius around the spawn point (center of map). Radius must be large enough that all starting-kit terrain requirements (IronVein, CopperVein, StoneDeposit, WaterSource) fall within revealed area. Writes to `FogMap.revealed`.
+
+6. **Run configuration** — Initializes `RunConfig` with biome, tick limit (`max_ticks`), `current_tick = 0`, ticks-per-second, and sustain window. Initializes `TierState` to tier 1. All startup systems run in Bevy `Startup` schedule (execute once before the first `Update`).
+
+**ECS connections (what startup writes, what simulation reads):**
+
+| Startup System | Writes to | Read by (simulation) |
+|---|---|---|
+| recipe_validation | Validates RecipeDB / `default_recipe` | placement_system, production_system |
+| terrain_gen | `Grid.terrain` | placement_system (terrain requirement check) |
+| starting_kit | `Inventory.buildings` | placement_system (inventory consumption) |
+| opus_tree_init | `OpusTreeResource.main_path`, `sustain_ticks_required` | opus_tree_sync_system, milestone_check_system |
+| fog_init | `FogMap.revealed` | placement_system (fog visibility check) |
+| run_config_init | `RunConfig`, `TierState` | run_lifecycle_system, tier_gate_system |
+
+**Acceptance criteria:**
+
+- AC1: After `GameStartupPlugin` runs, `default_recipe(bt)` returns a valid `Recipe` for every `BuildingType` variant — no panics, no missing arms. Extractors have empty inputs. Mall buildings have `output_to_inventory: true`. Energy and utility buildings have `duration_ticks == 1`.
+- AC2: After terrain generation with a given seed, `Grid.terrain` contains at least one cluster each of IronVein, CopperVein, StoneDeposit, and WaterSource within Manhattan distance 15 of the map center. Grid dimensions are 64x64.
+- AC3: Terrain generation is deterministic — running with the same seed twice produces identical `Grid.terrain` maps (same positions, same terrain types).
+- AC4: After starting kit initialization, `Inventory.buildings` contains exactly: IronMiner=4, CopperMiner=2, StoneQuarry=2, WaterPump=2, IronSmelter=2, CopperSmelter=1, Sawmill=1, TreeFarm=1, Constructor=1, WindTurbine=3, Watchtower=1. Total = 20 buildings. Every building in the kit has `tier() == 1`.
+- AC5: After opus tree initialization, `OpusTreeResource.main_path` contains exactly 7 nodes with resources [IronBar, CopperBar, Plank, SteelPlate, RefinedCrystal, RunicAlloy, OpusIngot] in order. Each node has `required_rate > 0.0`, `current_rate == 0.0`, `sustained == false`. `sustain_ticks_required == 600`.
+- AC6: After fog initialization, `FogMap.revealed` contains all cells within Manhattan distance of the reveal radius from the spawn point. Every cell with starting-resource terrain (IronVein, CopperVein, StoneDeposit, WaterSource) that was placed by terrain_gen within the starting area is revealed.
+- AC7: After run config initialization, `RunConfig.current_tick == 0`, `RunConfig.max_ticks > 0`, `TierState.current_tier == 1`. `RunState.status == InProgress`.
+- AC8: All startup systems execute in Bevy `Startup` schedule. After one `app.update()` call on a fresh App with `MinimalPlugins + SimulationPlugin + GameStartupPlugin`, all resources (Grid, Inventory, OpusTreeResource, FogMap, RunConfig, TierState, RunState) are populated and queryable with correct initial values.
+
+**Non-goals:**
+- Biome-specific starting kits (all biomes use the same kit for MVP; biome variation is a meta-progression unlock)
+- Procedural opus tree generation (milestone sequence is fixed for MVP; randomization is post-MVP)
+- Save/load of startup state (runs are ephemeral)
+- Rendering or visual feedback during startup (startup is instantaneous, one frame)
+
+**Edge cases:**
+- Seed value 0: must still produce valid terrain (no division-by-zero or empty map)
+- Grid cell at map boundary (0,0) or (63,63): terrain generation and fog reveal must handle edges without out-of-bounds
+- Starting kit building placed on a tile without matching terrain: placement_system rejects it (startup only stocks inventory, does not place buildings)
+- OpusTreeResource queried before first Update: all nodes show `current_rate = 0.0`, `sustained = false`, `completion_pct = 0.0`
+- Duplicate `GameStartupPlugin` registration: must not double-populate inventory or create duplicate opus nodes (idempotent or panic)
+
+---
+
+<!-- feature:game-render -->
+### F11: Visual Rendering
+
+Render the game world as a 3D isometric scene with pixel-art post-processing. Read-only layer over ECS state — never mutates simulation.
+
+**Problem:** The simulation layer (9 features, 421 tests) runs headless. To play the game, every ECS entity and resource must be visualized: terrain grid, buildings, transport paths, creatures, fog, overlays. The render pipeline described in `docs/VISUALS.md` (impostor sprites with albedo+normal+depth maps, per-pixel lighting, outline/toon/posterization post-processing) must be implemented as a Bevy plugin that syncs ECS state to 3D scene entities each frame.
+
+**How it works:**
+
+1. **Grid rendering** — Orthographic camera looking at a 64×64 tile grid. Each tile is a flat quad with height derived from terrain type (resource veins slightly raised, water slightly depressed, lava glowing). Terrain type determines tile texture/color. Grid lines visible at default zoom, fade at distance. Tiles use the impostor sprite format: albedo + normal + depth maps for per-pixel lighting.
+
+2. **Building sync** — Each ECS entity with `Building` + `Position` components gets a corresponding 3D scene entity. Sync runs every frame: spawn scene entity when building appears, despawn when removed, update visual state (idle, producing, no-energy, paused) via material parameters. Buildings use impostor sprites rendered as textured quads. Modular buildings merge visuals based on adjacency (extended wall segments for same-type neighbors, connection arches for different-type neighbors).
+
+3. **Group outlines** — Each building group gets a colored outline rendered as a convex hull or per-tile border around its members. Outline color encodes group state: active (green), paused (yellow), no-energy (red), idle (gray). Labels show group name and aggregate throughput.
+
+4. **Transport visualization** — Rune paths rendered as tiled ground sprites with UV-scroll shimmer. Pipes as tiled sprites with internal liquid UV-scroll + palette cycling. Cargo entities (resource items in transit) rendered as small impostor sprites translating along the path spline. Cargo bounce via vertex displacement `sin(time + path_progress)`.
+
+5. **Creature and nest rendering** — Creatures and nests synced from ECS entities with `Creature`/`Nest` components. Creatures use frame-based spritesheet animation (idle, move, attack, death) with 4 facing directions. Nests rendered as static impostors with emission pulse indicating activity level.
+
+6. **Fog of war** — Unrevealed tiles rendered as opaque dark overlay. Revealed but out-of-watchtower-range tiles rendered with desaturation shader. Fully visible tiles rendered normally. Fog state read from `FogMap` resource.
+
+7. **Ghost preview** — When the player is about to place a building, a semi-transparent ghost sprite follows the cursor grid position. Green tint = valid placement, red tint = invalid (wrong terrain, occupied, fogged). Ghost reads placement validation from the same rules as `placement_system`.
+
+8. **Post-processing chain** — Applied to the full low-res render target in order: (a) outline via Sobel edge detection on depth+normal buffers, (b) toon shading — quantize luminance into 3 bands, (c) posterization — reduce color depth to 8 levels per channel, (d) nearest-neighbor upscale to window resolution. Low-res target: 480×270 (4× upscale at 1920×1080).
+
+9. **Lighting** — One directional light (sun) providing base illumination via normal-map dot product. Point lights on forges, rune paths, lava tiles, and magic buildings. Ambient term prevents full-black shadows. Self-shadow from depth map comparison. Emission maps for glowing elements (additive, ignores lighting).
+
+10. **Shader animations** — No extra sprite frames. Vertex displacement for idle bob and wind sway. UV animation for flowing liquids, spinning gears, palette cycling. Emission pulse for forges and runes. Normal map rotation for animated sub-regions.
+
+**ECS connections (what render reads, never writes):**
+
+| Render System | Reads from | Visualizes as |
+|---|---|---|
+| grid_render_sync | `Grid.terrain` | Terrain tile quads with height + texture |
+| building_render_sync | `Building`, `Position`, `GroupMember`, `ProductionState` | Impostor sprites with state-driven materials |
+| group_outline_sync | `GroupMember` queries, `EnergyPool` | Colored outlines + labels |
+| transport_render_sync | `Path`, `CargoContainer` | Path sprites + cargo sprites |
+| creature_render_sync | `Creature`, `Nest`, `Position` | Animated spritesheets + nest impostors |
+| fog_render_sync | `FogMap` | Dark overlay / desaturation shader |
+| ghost_render_sync | cursor position + placement validation | Semi-transparent ghost sprite |
+
+**Acceptance criteria:**
+
+- AC1: After `GameStartupPlugin` + `RenderPlugin` run, every tile in `Grid.terrain` has a corresponding scene entity with correct position. Terrain types are visually distinguishable (different color/texture per type).
+- AC2: When a building is placed via `PlacementCommands`, a scene entity appears at the correct grid position by the next frame (render sync runs after simulation). When removed, the scene entity despawns by the next frame.
+- AC3: Building visual state reflects ECS state: producing buildings show activity (shader animation), idle buildings are static, no-energy buildings show dimmed material, paused buildings show yellow tint.
+- AC4: Group outlines enclose all buildings in a group. Outline color matches group state. When a group splits, outlines update to show two separate groups.
+- AC5: Transport paths are visible as continuous lines between group boundaries. Cargo sprites move along the path at the correct speed. Cargo type is visually distinguishable (different sprite per ResourceType).
+- AC6: Fog overlay covers unrevealed tiles completely. Revealed tiles within watchtower range render at full brightness. Tiles outside watchtower range render desaturated.
+- AC7: Ghost preview appears at cursor grid position during placement mode. Ghost color reflects placement validity (green=valid, red=invalid). Ghost disappears when placement mode exits.
+- AC8: Post-processing chain produces visible outlines on all object silhouettes, toon-shaded lighting with discrete shadow bands, and posterized colors. Upscale uses nearest-neighbor (no blur).
+- AC9: Point lights on emissive buildings (forges, lava generators, mana reactors) illuminate nearby sprites via normal-map lighting. Light radius and color are per-building-type.
+- AC10: Shader animations run without extra sprite frames: buildings idle-bob, trees sway, liquids flow in pipes, rune paths shimmer. Animations are time-based and desync between entities (per-entity phase offset from entity ID).
+- AC11: All render systems are read-only — no system in `RenderPlugin` writes to any simulation component, resource, or event. Render plugin can be removed without affecting simulation behavior.
+
+**Non-goals:**
+- Runtime camera rotation or perspective switching (fixed orthographic isometric)
+- Dynamic shadow maps or real-time global illumination (lighting is per-sprite via normal maps)
+- Asset pipeline or procedural generation of sprites (assets are pre-baked PNGs loaded at startup)
+- LOD (level of detail) system — the low-res target handles visual simplification
+- Particle systems (post-MVP; shader animations cover MVP visual effects)
+
+**Edge cases:**
+- Building placed at grid edge (0,0) or (63,63): scene entity must render at correct screen position without clipping
+- 200+ buildings on screen simultaneously: render sync must not drop below 30 FPS on low-res target
+- Transport path with 0 cargo: path sprites render but no cargo sprites exist — no crash
+- Creature dies (entity despawned): scene entity removed in same frame, no orphaned sprites
+- FogMap with all tiles revealed: fog overlay system runs but produces no visible effect
+- Weather change (CurrentWeather): affects directional light color/intensity — no discontinuous pop (lerp over ~10 frames)
+- Building type with no loaded sprite asset: render with magenta placeholder quad (never panic, never invisible)
+
+---
+
+<!-- feature:game-ui -->
+### F12: User Interaction
+
+Camera control, player input, and all UI panels. The layer between the human and the simulation.
+
+**Problem:** The simulation accepts commands via ECS resources (`PlacementCommands`, `TransportCommands`, `RemoveBuildingCommands`). The render layer visualizes state. Between them, nothing exists to translate mouse clicks into grid coordinates, display build menus, show inventory, or control game speed. Without this plugin the player cannot interact with the game at all.
+
+**How it works:**
+
+1. **Camera** — Orthographic camera with fixed isometric angle (35.264° from horizontal). Controls: WASD/arrow keys for pan, scroll wheel for zoom-to-cursor (zoom changes orthographic scale, not position — the tile under cursor stays under cursor). No rotation. Camera bounds clamp to grid extents with margin. Camera smooth-follows pan input (lerp, not instant snap).
+
+2. **Mouse-to-grid raycasting** — Every frame, cast a ray from mouse screen position through the orthographic camera onto the ground plane (y=0). Convert hit point to grid coordinates `(gx, gy)` using inverse isometric transform. Store result in `CursorGridPos` resource. If cursor is outside grid bounds or over a UI panel, `CursorGridPos` is `None`.
+
+3. **Building placement** — Player selects a building type from the build menu. Entering placement mode shows the ghost preview (rendered by game-render). Left-click on a valid tile writes to `PlacementCommands` and consumes from `Inventory`. Right-click or Escape exits placement mode. If `Inventory` count for the selected type is 0, placement mode auto-exits with a notification.
+
+4. **Building removal** — Right-click on an existing building writes to `RemoveBuildingCommands`. Building returns to `Inventory`. Confirmation is not required (undo via re-placement).
+
+5. **Transport path drawing** — Player enters path-draw mode from UI. Click source group boundary tile, drag to destination group boundary tile. Intermediate waypoints snap to grid. On release, validate path (no overlap with buildings, no existing path on tiles) and write to `TransportCommands`. Player selects Solid (rune path) or Liquid (pipe) before drawing. Path type selector visible during draw mode.
+
+6. **Game speed control** — Keyboard shortcuts: Space = pause/resume, 1/2/3 = speed multipliers (1×, 2×, 4×). Current speed shown in the top bar. While paused, player can still place buildings and draw paths (commands queue, execute on unpause).
+
+7. **Build menu panel** — Docked left panel showing available buildings grouped by category (Extraction, Processing, Mall, Combat, Energy, Utility). Each entry shows: icon, name, inventory count, tier requirement. Tier-locked buildings shown grayed with "T2"/"T3" label. Click selects building for placement mode.
+
+8. **Inventory panel** — Docked panel showing current building stock. Grouped by type. Shows count per building type. Updates live as Mall produces buildings or player places them.
+
+9. **Energy bar** — Top bar showing: total generation, total consumption, ratio percentage, surplus/deficit indicator. Color: green (surplus ≥ 10%), yellow (0-10% surplus), red (deficit). Clicking opens energy allocation overlay (per-group priority sliders).
+
+10. **Opus tree panel** — Docked right panel showing the milestone tree. Each node: resource icon, required rate, current rate, progress bar, sustained/not-sustained indicator. Main path nodes connected by lines. Mini-opus branches shown as side nodes. Completed nodes glow. Current target node highlighted.
+
+11. **Minimap** — Small fixed panel (bottom-right corner) showing the full 64×64 grid at reduced scale. Terrain colors match main view. Building dots. Fog overlay. Camera viewport rectangle. Click on minimap pans camera to that location.
+
+12. **Tooltips** — Hover over any building: shows building type, group name, current recipe, production state, energy consumption. Hover over transport path: shows cargo type, throughput, tier. Hover over creature/nest: shows type, behavior, health/strength. Tooltips appear after 300ms hover delay, dismiss on mouse move.
+
+13. **Notifications** — Transient messages for game events: "Milestone reached: IronBar", "Nest cleared — Tier 2 unlocked!", "Energy deficit — 3 groups throttled", "Hazard warning: lava eruption in 30 ticks". Stack in top-center, auto-dismiss after 5 seconds. Max 5 visible simultaneously.
+
+**ECS connections (what UI reads and writes):**
+
+| UI System | Reads | Writes |
+|---|---|---|
+| camera_system | keyboard/mouse input | Camera transform |
+| cursor_raycast_system | mouse position, Camera | `CursorGridPos` resource |
+| placement_input_system | `CursorGridPos`, `Inventory`, mouse clicks | `PlacementCommands` |
+| remove_input_system | `CursorGridPos`, mouse clicks | `RemoveBuildingCommands` |
+| path_draw_system | `CursorGridPos`, mouse drag, `PathOccupancy` | `TransportCommands` |
+| game_speed_system | keyboard input | `GameSpeed` resource (read by simulation tick) |
+| build_menu_system | `Inventory`, `TierState`, `BuildingDB` | placement mode state |
+| energy_bar_system | `EnergyPool` | energy allocation overlay |
+| opus_tree_panel_system | `OpusTreeResource`, `ProductionRates` | — (read-only display) |
+| minimap_system | `Grid`, `FogMap`, Camera | Camera transform (on click) |
+| tooltip_system | hovered entity queries, `CursorGridPos` | — (read-only display) |
+| notification_system | `Events<MilestoneReached>`, `Events<TierUnlocked>`, etc. | — (read-only display) |
+
+**Acceptance criteria:**
+
+- AC1: Camera pans with WASD/arrows at constant screen-space speed. Camera cannot pan beyond grid bounds (clamped with 2-tile margin).
+- AC2: Scroll wheel zooms toward cursor position — the grid tile under the cursor stays under the cursor after zoom. Zoom range: 0.5× to 4× of default orthographic scale.
+- AC3: `CursorGridPos` correctly maps mouse screen position to grid coordinates for all zoom levels and camera positions. Hovering over grid tile (3,5) at any zoom reports `Some((3,5))`. Hovering outside grid or over UI panel reports `None`.
+- AC4: Left-click during placement mode places building at `CursorGridPos` if valid. `Inventory` count decreases by 1. `PlacementCommands` contains the placement command. Invalid click (occupied, fogged, wrong terrain) does nothing — no command written, no inventory consumed. Right-click or Escape during placement mode exits placement mode (does NOT remove any building).
+- AC5: Right-click on building outside placement mode removes it. Building returns to `Inventory` (count increases by 1). `RemoveBuildingCommands` contains the removal command. Right-click on empty tile does nothing.
+- AC6: Path drawing produces a valid `TransportCommands` entry connecting two group boundary tiles. Path segments snap to grid. Drawing over occupied tiles (buildings, existing paths) shows red highlight and does not commit.
+- AC7: Space toggles pause. 1/2/3 sets speed. While paused, placement and path drawing still work — commands queue and execute when unpaused.
+- AC8: Build menu shows all building types with correct inventory counts and tier states. Tier-locked buildings are grayed and unselectable. Clicking a building with count > 0 enters placement mode.
+- AC9: Energy bar reflects `EnergyPool` values: generation, consumption, ratio. Color changes at correct thresholds (green ≥ 110%, yellow 100-110%, red < 100%).
+- AC10: Opus tree panel shows all milestone nodes with correct current_rate, required_rate, and sustained status. Progress bars update each tick. Completed nodes visually distinct from in-progress and locked nodes.
+- AC11: Minimap renders terrain, buildings, fog, and camera viewport rectangle. Clicking minimap pans camera to clicked grid position.
+- AC12: Tooltips show correct data for hovered buildings, paths, and creatures. Tooltip appears after 300ms delay and disappears when cursor moves away.
+- AC13: Notifications appear for MilestoneReached, TierUnlocked, hazard warnings, and energy deficit events. Max 5 visible, auto-dismiss after 5 seconds.
+
+**Non-goals:**
+- Key rebinding or input customization (post-MVP)
+- Controller/gamepad support (mouse+keyboard only)
+- Drag-select multiple buildings (single-click interaction only)
+- In-game settings menu (resolution, volume, etc. — post-MVP)
+- Tutorial or onboarding flow
+- Production calculator UI (covered by F8: UX Tools — separate feature)
+- Chain visualizer overlay (covered by F8: UX Tools)
+
+**Edge cases:**
+- Window resize: camera aspect ratio updates, UI panels reflow, minimap stays fixed size
+- Click on building that overlaps with UI panel: UI panel consumes the click, no placement/removal happens
+- Path drawing interrupted by Escape: partial path discarded, no command written
+- Inventory reaches 0 during placement: current ghost disappears, placement mode exits, notification "Out of [building type]"
+- Zoom at grid edge: camera clamp prevents scrolling to see empty space beyond grid
+- Two simultaneous notifications of same type: show both (no dedup), stack vertically
+- Pause during hazard countdown: countdown ticks freeze (simulation paused), hazard warning notification stays visible
