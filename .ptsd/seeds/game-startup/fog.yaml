@@ -1,0 +1,21 @@
+# Fog of war initialization
+# Manhattan distance reveal around spawn point
+#
+# Spawn at (15,15) so all starting resource clusters fall within reveal radius:
+#   IronVein (10,10)    -> dist = |10-15| + |10-15| = 10, within 12
+#   CopperVein (20,10)  -> dist = |20-15| + |10-15| = 10, within 12
+#   StoneDeposit (15,20) -> dist = |15-15| + |20-15| = 5, within 12
+#   WaterSource (25,15) -> dist = |25-15| + |15-15| = 10, within 12
+
+fog_config:
+  spawn_point: [15, 15]
+  reveal_radius: 12  # Manhattan distance
+
+expected:
+  # Manhattan diamond of radius r has 2*r*(r+1)+1 cells
+  # r=12: 2*12*13+1 = 313
+  revealed_cells: 313
+  iron_cluster_covered: true     # (10,10) dist=10, within 12
+  copper_cluster_covered: true   # (20,10) dist=10, within 12
+  stone_cluster_covered: true    # (15,20) dist=5, within 12
+  water_cluster_covered: true    # (25,15) dist=10, within 12

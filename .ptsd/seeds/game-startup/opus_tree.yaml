@@ -1,0 +1,40 @@
+# Opus tree for MVP — fixed 7-node main path
+# required_rate: items per tick that must be sustained
+
+opus_tree:
+  sustain_ticks_required: 600
+  main_path:
+    - node_index: 0
+      resource: IronBar
+      required_rate: 2.0
+      tier: 1
+    - node_index: 1
+      resource: CopperBar
+      required_rate: 1.5
+      tier: 1
+    - node_index: 2
+      resource: Plank
+      required_rate: 2.0
+      tier: 1
+    - node_index: 3
+      resource: SteelPlate
+      required_rate: 1.0
+      tier: 2
+    - node_index: 4
+      resource: RefinedCrystal
+      required_rate: 0.5
+      tier: 2
+    - node_index: 5
+      resource: RunicAlloy
+      required_rate: 0.3
+      tier: 3
+    - node_index: 6
+      resource: OpusIngot
+      required_rate: 0.1
+      tier: 3
+
+  # All nodes start unsustained
+  initial_state:
+    current_rate: 0.0
+    sustained: false
+    completion_pct: 0.0

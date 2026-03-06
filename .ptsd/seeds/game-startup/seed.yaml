@@ -1,0 +1,8 @@
+feature: game-startup
+files:
+  - terrain.yaml
+  - starting_kit.yaml
+  - opus_tree.yaml
+  - fog.yaml
+  - run_config.yaml
+  - recipe_validation.yaml

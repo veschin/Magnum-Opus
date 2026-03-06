@@ -1,0 +1,39 @@
+# Terrain generation seed data
+# Deterministic: same seed -> same terrain
+
+terrain_config:
+  grid_width: 64
+  grid_height: 64
+  default_terrain: Grass
+  seed: 42
+
+# Resource clusters — guaranteed positions near spawn
+# Each cluster places a 5x5 block of terrain type centered at position
+clusters:
+  - terrain: IronVein
+    center: [10, 10]
+    radius: 2
+  - terrain: CopperVein
+    center: [20, 10]
+    radius: 2
+  - terrain: StoneDeposit
+    center: [15, 20]
+    radius: 2
+  - terrain: WaterSource
+    center: [25, 15]
+    radius: 1
+
+# Validation: after terrain gen with seed=42
+expected:
+  total_cells: 4096  # 64x64
+  non_grass_cells_min: 50  # at least 50 resource tiles
+  iron_vein_within_15_of_center: true
+  copper_vein_within_15_of_center: true
+  stone_deposit_within_20_of_center: true
+  water_source_within_20_of_center: true
+
+# Edge case: seed=0 must also produce valid terrain
+edge_seed_zero:
+  seed: 0
+  expected_non_grass_min: 50
+  no_panic: true

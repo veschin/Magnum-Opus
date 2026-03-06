@@ -1,0 +1,23 @@
+# Default run configuration for MVP
+
+run_config:
+  biome: Forest
+  difficulty: Normal
+  max_ticks: 108000   # 90 minutes at 20 TPS
+  tps: 20
+  sustain_window_ticks: 600
+  sample_interval_ticks: 20
+  current_tick: 0
+  abandoned: false
+
+tier_state:
+  current_tier: 1
+
+run_state:
+  status: InProgress
+  opus_completion: 0.0
+  mini_opus_score: 0.0
+  time_bonus: 0.0
+  raw_score: 0.0
+  final_score: 0
+  currency_earned: 0.0
