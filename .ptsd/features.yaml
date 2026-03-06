@@ -21,8 +21,17 @@ features:
     title: 
     status: implemented
   - id: ux
-    title:
+    title: 
     status: implemented
   - id: ecs-engine
-    title: Cross-Feature Integration
+    title: "Cross-Feature Integration"
+    status: new
+  - id: game-startup
+    title: "Run Initialization"
+    status: in-progress
+  - id: game-render
+    title: "Visual Rendering"
+    status: new
+  - id: game-ui
+    title: "User Interaction"
     status: new

@@ -5,7 +5,7 @@ features:
     review: passed
     issues: 0
   creatures:
-    stage: tests
+    stage: impl
     tests: passing
     review: passed
     issues: 0
@@ -17,6 +17,21 @@ features:
   energy:
     stage: impl
     tests: passing
+    review: passed
+    issues: 0
+  game-render:
+    stage: bdd
+    tests: absent
+    review: passed
+    issues: 0
+  game-startup:
+    stage: tests
+    tests: absent
+    review: passed
+    issues: 0
+  game-ui:
+    stage: bdd
+    tests: absent
     review: passed
     issues: 0
   meta:
