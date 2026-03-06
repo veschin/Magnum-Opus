@@ -1,6 +1,6 @@
 features:
   building-groups:
-    stage: prd
+    stage: impl
     hashes:
       bdd: ac50a20bea4f888ab698a4be6eaff032395fb5142c6eddb2ce7bef308d0d4216
       prd: 1c09620001eaad970b8575038969662fff8ec4fd1af4613def1b34c80c607773
@@ -14,7 +14,7 @@ features:
         at: "2026-03-01T23:10:39.588433099+03:00"
       impl:
         score: 8
-        at: "2026-03-02T08:43:50.81303719+03:00"
+        at: "2026-03-06T10:54:05.019436013+03:00"
       prd:
         score: 9
         at: "0001-01-01T00:00:00Z"
@@ -157,7 +157,7 @@ features:
         score: 8
         at: "2026-03-06T10:06:20.32791527+03:00"
   meta:
-    stage: prd
+    stage: impl
     hashes:
       bdd: ea8724a47b3c6bd859ccae75ff5ed0b0191eabab59998f827928e34b5879a5e5
       prd: 1c09620001eaad970b8575038969662fff8ec4fd1af4613def1b34c80c607773
@@ -170,8 +170,8 @@ features:
         score: 8
         at: "0001-01-01T00:00:00Z"
       impl:
-        score: 7
-        at: "2026-03-02T08:43:50.816422813+03:00"
+        score: 8
+        at: "2026-03-06T10:54:08.042446096+03:00"
       prd:
         score: 8
         at: "0001-01-01T00:00:00Z"
@@ -238,7 +238,7 @@ features:
     tests:
       - .ptsd/bdd/transport/transport.feature::magnum_opus/src/tests/transport_bdd.rs
   ux:
-    stage: prd
+    stage: impl
     hashes:
       bdd: 499021a2c1e22a6637917d79058f859e30ad7b4f17afa938dc957fc8aef1b686
       prd: 1c09620001eaad970b8575038969662fff8ec4fd1af4613def1b34c80c607773
@@ -251,8 +251,8 @@ features:
         score: 7
         at: "0001-01-01T00:00:00Z"
       impl:
-        score: 7
-        at: "2026-03-02T08:43:50.817670262+03:00"
+        score: 8
+        at: "2026-03-06T10:54:08.043342004+03:00"
       prd:
         score: 8
         at: "0001-01-01T00:00:00Z"
@@ -265,7 +265,7 @@ features:
     tests:
       - .ptsd/bdd/ux/ux.feature::magnum_opus/src/tests/ux_bdd.rs
   world:
-    stage: prd
+    stage: impl
     hashes:
       bdd: 2551a55f080a45f9687411afc56a159e19f55a7952899512f57bfc36f7201aff
       prd: 1c09620001eaad970b8575038969662fff8ec4fd1af4613def1b34c80c607773
@@ -278,8 +278,8 @@ features:
         score: 9
         at: "0001-01-01T00:00:00Z"
       impl:
-        score: 7
-        at: "2026-03-02T08:43:50.814472979+03:00"
+        score: 8
+        at: "2026-03-06T10:54:08.041425688+03:00"
       prd:
         score: 8
         at: "0001-01-01T00:00:00Z"

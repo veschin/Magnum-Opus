@@ -1,6 +1,6 @@
 features:
   building-groups:
-    stage: tests
+    stage: impl
     tests: passing
     review: passed
     issues: 0
@@ -35,7 +35,7 @@ features:
     review: passed
     issues: 0
   meta:
-    stage: tests
+    stage: impl
     tests: passing
     review: passed
     issues: 0
@@ -50,12 +50,12 @@ features:
     review: passed
     issues: 0
   ux:
-    stage: tests
+    stage: impl
     tests: passing
     review: passed
     issues: 0
   world:
-    stage: tests
+    stage: impl
     tests: passing
     review: passed
     issues: 0
