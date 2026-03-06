@@ -20,7 +20,7 @@ features:
     review: passed
     issues: 0
   game-render:
-    stage: bdd
+    stage: tests
     tests: absent
     review: passed
     issues: 0
@@ -30,7 +30,7 @@ features:
     review: passed
     issues: 0
   game-ui:
-    stage: bdd
+    stage: tests
     tests: absent
     review: passed
     issues: 0

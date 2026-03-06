@@ -29,9 +29,12 @@ features:
   - id: game-startup
     title: "Run Initialization"
     status: in-progress
+    depends_on: [building-groups, transport, world, creatures, progression, meta, energy, ux]
   - id: game-render
     title: "Visual Rendering"
     status: new
+    depends_on: [game-startup]
   - id: game-ui
     title: "User Interaction"
     status: new
+    depends_on: [game-render]

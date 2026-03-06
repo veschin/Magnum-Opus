@@ -59,6 +59,7 @@ features:
       bdd: 20022e09d7dbe3721c999fd0302e50b8da8c00ff034cef9fd7a55934e01a130f
       prd: 1c09620001eaad970b8575038969662fff8ec4fd1af4613def1b34c80c607773
       seed: 4ad3035f81625ae0c37062cf45b18220f868fca4306ad23f4fac08586361cc90
+      test: a7bf4226ba055bb0376c746ca54d49dc070dfba024165e0b10aaef4e65b886b4
     scores:
       bdd:
         score: 8
@@ -105,10 +106,13 @@ features:
     tests:
       - .ptsd/bdd/energy/energy.feature::magnum_opus/src/tests/energy_bdd.rs
   game-render:
-    stage: bdd
+    stage: tests
     hashes:
       bdd: bb1175c6a821a4d03f165f9a660b23f1bde3f71c601e5683dde73c6ee745a2bb
+      prd: 1c09620001eaad970b8575038969662fff8ec4fd1af4613def1b34c80c607773
       seed: 920e292f91f0627daef38cb94474d22625af860d91ea34651633805f50c05a96
+    tests:
+      - .ptsd/bdd/game-render.feature::magnum_opus/src/tests/game_render_bdd.rs
     scores:
       bdd:
         score: 8
@@ -119,11 +123,16 @@ features:
       seed:
         score: 8
         at: "2026-03-06T10:06:20.326996942+03:00"
+      tests:
+        score: 7
+        at: "2026-03-06T11:11:27.087101725+03:00"
   game-startup:
     stage: tests
     hashes:
-      bdd: 73d42ec79e272542de4a64d01e4fd79759660af5d8edfccf8055233c4ed6e0be
+      bdd: 9deb281bf94cd37a05d5289afe2efcb89368b9ed69365a5d1fe962b256ee67c0
+      prd: 1c09620001eaad970b8575038969662fff8ec4fd1af4613def1b34c80c607773
       seed: 719cd2a32b18f67676b51f13b4a25b229dd1baa8096289598d0bcd880ee0fd7f
+      test: 1efd15907a1162e6d3fc39480184e22f7436da8e2cd71101439eb7d3b1da1def
       test_results: passed:10 failed:12
       test_status: failing
     scores:
@@ -142,10 +151,13 @@ features:
     tests:
       - .ptsd/bdd/game-startup.feature::magnum_opus/src/tests/game_startup_bdd.rs
   game-ui:
-    stage: bdd
+    stage: tests
     hashes:
       bdd: df7fc616f3cd3cfa00c5fe3bf0332df1bded3bf41a977c87c78bf07a5ea71d24
+      prd: 1c09620001eaad970b8575038969662fff8ec4fd1af4613def1b34c80c607773
       seed: c78fbff2955c6558162be67c54fdf9473efa9cdebd0d2af55497c21f0bcb0bd2
+    tests:
+      - .ptsd/bdd/game-ui.feature::magnum_opus/src/tests/game_ui_bdd.rs
     scores:
       bdd:
         score: 8
@@ -156,6 +168,9 @@ features:
       seed:
         score: 8
         at: "2026-03-06T10:06:20.32791527+03:00"
+      tests:
+        score: 7
+        at: "2026-03-06T11:11:27.088156256+03:00"
   meta:
     stage: impl
     hashes:
