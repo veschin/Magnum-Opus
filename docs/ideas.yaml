@@ -529,3 +529,43 @@
   tier: A
   type: mechanic
   status: locked
+
+# =============================================================================
+# ENERGY — Power Grid
+# =============================================================================
+
+- id: 42
+  idea: "Power grid: poles, wires, and switchboards"
+  desc: >
+    Energy rework: replace global energy pool with physical power grid.
+    Energy sources generate power locally. To deliver it to consumer groups
+    you must build POWER POLES and WIRES between them — like Factorio.
+
+    Three new entities:
+    1) Power Pole — relay node, extends wire range. Single tier, no upgrades.
+       Large enough coverage that you don't micromanage them — just place
+       and forget. Cheap to build (stone + wood).
+    2) Wire — connection between two poles (or pole↔group). Has max length,
+       carries energy up to pole capacity.
+    3) Switchboard — attaches to a group. Lets player control that group's
+       energy: boost priority, throttle down, or cut power entirely.
+       Acts as the circuit breaker for fine-grained energy management.
+
+    UX — auto-routing:
+    Player selects two endpoints (energy source group → consumer group).
+    Game auto-proposes optimal pole placement path and builds it if player
+    has enough materials. Player can override with manual pole placement
+    if they want a custom route.
+
+    Impact: energy becomes spatial. You can't plop a wind turbine anywhere
+    and power the whole map. Proximity matters, wire routing matters.
+    Switchboard gives per-group control that the current global priority
+    system lacks. Poles are deliberately simple (no tiers) to keep focus
+    on interesting decisions (where to generate, how to route) rather
+    than upgrade busywork.
+
+    Replaces current global EnergyPool ratio with per-wire energy flow.
+  system: energy
+  tier: A
+  type: mechanic
+  status: open
