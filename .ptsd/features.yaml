@@ -1,40 +1,40 @@
 features:
   - id: building-groups
-    title: 
-    status: implemented
+    title: "Building Groups"
+    status: planned
   - id: transport
-    title: 
-    status: implemented
+    title: "Transport"
+    status: planned
   - id: world
-    title: 
-    status: implemented
+    title: "World & Biomes"
+    status: planned
   - id: creatures
-    title: 
-    status: implemented
+    title: "Creatures & Combat"
+    status: planned
   - id: progression
-    title: 
-    status: implemented
+    title: "Progression"
+    status: planned
   - id: meta
-    title: 
-    status: implemented
+    title: "Meta-Progression"
+    status: planned
   - id: energy
-    title: 
-    status: implemented
+    title: "Energy"
+    status: planned
   - id: ux
-    title: 
-    status: implemented
+    title: "UX Tools"
+    status: planned
   - id: ecs-engine
     title: "Cross-Feature Integration"
-    status: new
+    status: planned
   - id: game-startup
     title: "Run Initialization"
-    status: in-progress
+    status: planned
     depends_on: [building-groups, transport, world, creatures, progression, meta, energy, ux]
   - id: game-render
     title: "Visual Rendering"
-    status: new
+    status: planned
     depends_on: [game-startup]
   - id: game-ui
     title: "User Interaction"
-    status: new
+    status: planned
     depends_on: [game-render]

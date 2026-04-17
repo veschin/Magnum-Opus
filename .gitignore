@@ -7,3 +7,11 @@ target/
 
 # Binary output (match project name)
 /game
+/magnum_opus/magnum_opus
+
+# Cargo: lib-only crate during greenfield rewrite, no lock file committed
+Cargo.lock
+
+# Claude Code local overrides (personal, not shared)
+CLAUDE.local.md
+.claude/settings.local.json

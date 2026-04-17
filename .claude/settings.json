@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/home/veschin/ai/game/.claude/hooks/ptsd-context.sh"
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/ptsd-context.sh"
           }
         ]
       }
@@ -15,7 +15,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/home/veschin/ai/game/.claude/hooks/ptsd-context.sh"
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/ptsd-context.sh"
           }
         ]
       }
@@ -26,7 +26,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/home/veschin/ai/game/.claude/hooks/ptsd-gate.sh"
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/ptsd-gate.sh"
           }
         ]
       },
@@ -35,7 +35,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/home/veschin/ai/game/.claude/hooks/check-file-size.sh"
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/check-file-size.sh"
           }
         ]
       }
@@ -46,7 +46,11 @@
         "hooks": [
           {
             "type": "command",
-            "command": "/home/veschin/ai/game/.claude/hooks/ptsd-track.sh"
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/ptsd-track.sh"
+          },
+          {
+            "type": "command",
+            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/cargo-fmt.sh"
           }
         ]
       }

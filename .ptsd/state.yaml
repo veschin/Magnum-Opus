@@ -1,310 +1,85 @@
 features:
   building-groups:
-    stage: impl
+    stage: bdd
     hashes:
       bdd: ac50a20bea4f888ab698a4be6eaff032395fb5142c6eddb2ce7bef308d0d4216
       prd: 1c09620001eaad970b8575038969662fff8ec4fd1af4613def1b34c80c607773
       seed: bff60b73d4268d59a5765c131f4bc9636a3cbd68cb5b88cbdab4c281aaa31da6
-      test: 6019f13f3653347b2b1223a93dfa3c3b34c8dbe3f2fd4d0b3357f4f55fced726
-      test_results: passed:1 failed:0
-      test_status: passing
     scores:
-      bdd:
-        score: 8
-        at: "2026-03-01T23:10:39.588433099+03:00"
-      impl:
-        score: 8
-        at: "2026-03-06T10:54:05.019436013+03:00"
-      prd:
-        score: 9
-        at: "0001-01-01T00:00:00Z"
-      seed:
-        score: 8
-        at: "0001-01-01T00:00:00Z"
-      tests:
-        score: 8
-        at: "2026-03-01T23:11:03.869714078+03:00"
-    tests:
-      - .ptsd/bdd/building-groups.feature::magnum_opus/src/tests/building_groups_bdd.rs
   creatures:
-    stage: prd
+    stage: bdd
     hashes:
       bdd: 6fffc33b1088310569728752c8409e226be8fa48a327cb7c8ca9f0ec0a43e060
       prd: 1c09620001eaad970b8575038969662fff8ec4fd1af4613def1b34c80c607773
       seed: e4fcf5e33b213e96a635d6cdb4b43df197faae7cac1c602f2b6bef226b507cae
-      test: c66bad1f3e39f0a90b320cd6205527c66303dec4ddf05fef300cb21758b615a1
-      test_results: passed:1 failed:0
-      test_status: passing
     scores:
-      bdd:
-        score: 8
-        at: "0001-01-01T00:00:00Z"
-      impl:
-        score: 8
-        at: "2026-03-02T08:43:50.815144866+03:00"
-      prd:
-        score: 9
-        at: "0001-01-01T00:00:00Z"
-      seed:
-        score: 8
-        at: "0001-01-01T00:00:00Z"
-      tests:
-        score: 8
-        at: "2026-03-02T14:11:22.50136786+03:00"
-    tests:
-      - .ptsd/bdd/creatures/creatures.feature::magnum_opus/src/tests/creatures_bdd.rs
   ecs-engine:
-    stage: prd
+    stage: bdd
     hashes:
       bdd: 20022e09d7dbe3721c999fd0302e50b8da8c00ff034cef9fd7a55934e01a130f
       prd: 1c09620001eaad970b8575038969662fff8ec4fd1af4613def1b34c80c607773
       seed: 4ad3035f81625ae0c37062cf45b18220f868fca4306ad23f4fac08586361cc90
-      test: a7bf4226ba055bb0376c746ca54d49dc070dfba024165e0b10aaef4e65b886b4
     scores:
-      bdd:
-        score: 8
-        at: "2026-03-02T09:50:25.838257295+03:00"
-      impl:
-        score: 8
-        at: "2026-03-02T11:00:12.883545314+03:00"
-      prd:
-        score: 8
-        at: "2026-03-02T09:41:33.684398894+03:00"
-      seed:
-        score: 8
-        at: "2026-03-02T09:41:41.194797657+03:00"
-      tests:
-        score: 8
-        at: "2026-03-02T09:59:57.180149212+03:00"
-    tests:
-      - .ptsd/bdd/ecs-engine.feature::magnum_opus/src/tests/ecs_engine_bdd.rs
   energy:
-    stage: prd
+    stage: bdd
     hashes:
       bdd: bb75f0a2a675d0334506df54ecb67c9bab0de7d225a8a3fb2692fdb548f9c23e
       prd: 1c09620001eaad970b8575038969662fff8ec4fd1af4613def1b34c80c607773
       seed: 80c6a29d15bdbcb00787ee0c0a1eccb4408555618735a562b0e5bc3d50bef9de
-      test: d87dd7154b99bacb1ed5aeb979eb42f590526db6f4fb815c8087f547bce3962b
-      test_results: passed:1 failed:0
-      test_status: passing
     scores:
-      bdd:
-        score: 8
-        at: "0001-01-01T00:00:00Z"
-      impl:
-        score: 8
-        at: "2026-03-02T08:43:50.817010609+03:00"
-      prd:
-        score: 9
-        at: "0001-01-01T00:00:00Z"
-      seed:
-        score: 8
-        at: "0001-01-01T00:00:00Z"
-      tests:
-        score: 8
-        at: "2026-03-02T14:11:22.502176009+03:00"
-    tests:
-      - .ptsd/bdd/energy/energy.feature::magnum_opus/src/tests/energy_bdd.rs
   game-render:
-    stage: tests
+    stage: bdd
     hashes:
       bdd: bb1175c6a821a4d03f165f9a660b23f1bde3f71c601e5683dde73c6ee745a2bb
       prd: 1c09620001eaad970b8575038969662fff8ec4fd1af4613def1b34c80c607773
       seed: 920e292f91f0627daef38cb94474d22625af860d91ea34651633805f50c05a96
-    tests:
-      - .ptsd/bdd/game-render.feature::magnum_opus/src/tests/game_render_bdd.rs
     scores:
-      bdd:
-        score: 8
-        at: "2026-03-06T10:14:21.292618347+03:00"
-      prd:
-        score: 8
-        at: "2026-03-06T10:03:22.564675879+03:00"
-      seed:
-        score: 8
-        at: "2026-03-06T10:06:20.326996942+03:00"
-      tests:
-        score: 7
-        at: "2026-03-06T11:11:27.087101725+03:00"
   game-startup:
-    stage: tests
+    stage: bdd
     hashes:
       bdd: 9deb281bf94cd37a05d5289afe2efcb89368b9ed69365a5d1fe962b256ee67c0
       prd: 1c09620001eaad970b8575038969662fff8ec4fd1af4613def1b34c80c607773
       seed: 719cd2a32b18f67676b51f13b4a25b229dd1baa8096289598d0bcd880ee0fd7f
-      test: 1efd15907a1162e6d3fc39480184e22f7436da8e2cd71101439eb7d3b1da1def
-      test_results: passed:10 failed:12
-      test_status: failing
     scores:
-      bdd:
-        score: 8
-        at: "2026-03-06T09:35:46.420570738+03:00"
-      prd:
-        score: 8
-        at: "2026-03-06T09:29:18.976883343+03:00"
-      seed:
-        score: 8
-        at: "2026-03-06T09:32:46.680814191+03:00"
-      tests:
-        score: 8
-        at: "2026-03-06T10:30:13.174537382+03:00"
-    tests:
-      - .ptsd/bdd/game-startup.feature::magnum_opus/src/tests/game_startup_bdd.rs
   game-ui:
-    stage: tests
+    stage: bdd
     hashes:
       bdd: df7fc616f3cd3cfa00c5fe3bf0332df1bded3bf41a977c87c78bf07a5ea71d24
       prd: 1c09620001eaad970b8575038969662fff8ec4fd1af4613def1b34c80c607773
       seed: c78fbff2955c6558162be67c54fdf9473efa9cdebd0d2af55497c21f0bcb0bd2
-    tests:
-      - .ptsd/bdd/game-ui.feature::magnum_opus/src/tests/game_ui_bdd.rs
     scores:
-      bdd:
-        score: 8
-        at: "2026-03-06T10:14:21.293583644+03:00"
-      prd:
-        score: 8
-        at: "2026-03-06T10:03:22.565656046+03:00"
-      seed:
-        score: 8
-        at: "2026-03-06T10:06:20.32791527+03:00"
-      tests:
-        score: 7
-        at: "2026-03-06T11:11:27.088156256+03:00"
   meta:
-    stage: impl
+    stage: bdd
     hashes:
       bdd: ea8724a47b3c6bd859ccae75ff5ed0b0191eabab59998f827928e34b5879a5e5
       prd: 1c09620001eaad970b8575038969662fff8ec4fd1af4613def1b34c80c607773
       seed: 8b78855903488f70011ff627bff4b71363d79cb6a50408065fb89e0a956527da
-      test: ec86644b8d031c35092a88f5a2bb2fc0364fab0eff948ae45f5488c75d044f74
-      test_results: passed:1 failed:0
-      test_status: passing
     scores:
-      bdd:
-        score: 8
-        at: "0001-01-01T00:00:00Z"
-      impl:
-        score: 8
-        at: "2026-03-06T10:54:08.042446096+03:00"
-      prd:
-        score: 8
-        at: "0001-01-01T00:00:00Z"
-      seed:
-        score: 8
-        at: "0001-01-01T00:00:00Z"
-      tests:
-        score: 7
-        at: "2026-03-01T23:04:53.581105691+03:00"
-    tests:
-      - .ptsd/bdd/meta/meta.feature::magnum_opus/src/tests/meta_bdd.rs
   progression:
-    stage: prd
+    stage: bdd
     hashes:
       bdd: d5c058de93fb45d8401d11546d2e1ab1a25bb621b472b03829b30ec81d5a7330
       prd: 1c09620001eaad970b8575038969662fff8ec4fd1af4613def1b34c80c607773
       seed: 9eb8147821484a6cd1cfc1d92be1bbc04db476d99567f777174a56bb0a31d775
-      test: 677c669daa2835fac24fcd49e0dcc336298bd36ed433f4edb883abe48fa13e4c
-      test_results: passed:1 failed:0
-      test_status: passing
     scores:
-      bdd:
-        score: 8
-        at: "0001-01-01T00:00:00Z"
-      impl:
-        score: 8
-        at: "2026-03-02T08:43:50.815799219+03:00"
-      prd:
-        score: 9
-        at: "0001-01-01T00:00:00Z"
-      seed:
-        score: 8
-        at: "0001-01-01T00:00:00Z"
-      tests:
-        score: 8
-        at: "2026-03-02T14:11:22.502882502+03:00"
-    tests:
-      - .ptsd/bdd/progression/progression.feature::magnum_opus/src/tests/progression_bdd.rs
   transport:
-    stage: prd
+    stage: bdd
     hashes:
       bdd: 9a5b37fb125db29c35742e69eaaa0ae51396b9ccf231d4a1956da764d53aeb0b
       prd: 1c09620001eaad970b8575038969662fff8ec4fd1af4613def1b34c80c607773
       seed: 8e5db75c294ce7951569860102b4f61096f0c223f44b9701cafc182124e35312
-      test: 0b52e32cd047c9b0b8fd225ab45687e099d22904f1a025c60dc9d1c0bf3d6773
-      test_results: passed:1 failed:0
-      test_status: passing
     scores:
-      bdd:
-        score: 7
-        at: "0001-01-01T00:00:00Z"
-      impl:
-        score: 8
-        at: "2026-03-02T08:43:50.813784421+03:00"
-      prd:
-        score: 9
-        at: "0001-01-01T00:00:00Z"
-      seed:
-        score: 8
-        at: "0001-01-01T00:00:00Z"
-      tests:
-        score: 8
-        at: "2026-03-02T14:11:22.503593123+03:00"
-    tests:
-      - .ptsd/bdd/transport/transport.feature::magnum_opus/src/tests/transport_bdd.rs
   ux:
-    stage: impl
+    stage: bdd
     hashes:
       bdd: 499021a2c1e22a6637917d79058f859e30ad7b4f17afa938dc957fc8aef1b686
       prd: 1c09620001eaad970b8575038969662fff8ec4fd1af4613def1b34c80c607773
       seed: db2697407ff703c2dee6af434badcd76d163187ab372474f94cccc0b35d4883a
-      test: da0e38843f7f6c5a355e88182ae304c1880f3a57e6016c5e939fe502dff02cd9
-      test_results: passed:1 failed:0
-      test_status: passing
     scores:
-      bdd:
-        score: 7
-        at: "0001-01-01T00:00:00Z"
-      impl:
-        score: 8
-        at: "2026-03-06T10:54:08.043342004+03:00"
-      prd:
-        score: 8
-        at: "0001-01-01T00:00:00Z"
-      seed:
-        score: 8
-        at: "0001-01-01T00:00:00Z"
-      tests:
-        score: 7
-        at: "2026-03-01T23:04:53.581913396+03:00"
-    tests:
-      - .ptsd/bdd/ux/ux.feature::magnum_opus/src/tests/ux_bdd.rs
   world:
-    stage: impl
+    stage: bdd
     hashes:
       bdd: 2551a55f080a45f9687411afc56a159e19f55a7952899512f57bfc36f7201aff
       prd: 1c09620001eaad970b8575038969662fff8ec4fd1af4613def1b34c80c607773
       seed: 389ca1603942d519de9eded952f00a1c892125b3a8dabcacccce770ba530dc7c
-      test: 65f02f1fc771be6b7988d6cf1df9865fde5fad9a402f6e134ec173c9150a5fae
-      test_results: passed:1 failed:0
-      test_status: passing
     scores:
-      bdd:
-        score: 9
-        at: "0001-01-01T00:00:00Z"
-      impl:
-        score: 8
-        at: "2026-03-06T10:54:08.041425688+03:00"
-      prd:
-        score: 8
-        at: "0001-01-01T00:00:00Z"
-      seed:
-        score: 8
-        at: "0001-01-01T00:00:00Z"
-      tests:
-        score: 7
-        at: "2026-03-01T23:04:53.58269477+03:00"
-    tests:
-      - .ptsd/bdd/world/world.feature::magnum_opus/src/tests/world_bdd_terrain.rs
-      - .ptsd/bdd/world/world.feature::magnum_opus/src/tests/world_bdd_hazards.rs
-      - .ptsd/bdd/world/world.feature::magnum_opus/src/tests/world_bdd_systems.rs
