@@ -19,3 +19,7 @@ features:
     title: "Sobel outline post-process over low-res render target"
     status: planned
     pipeline: lite
+  - id: placement
+    title: "Click-to-place buildings via CommandBus<PlaceTile> drained by grid module"
+    status: planned
+    pipeline: lite
