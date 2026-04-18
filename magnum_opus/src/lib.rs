@@ -4,6 +4,7 @@
 pub mod buildings;
 pub mod core;
 pub mod grid;
+pub mod group_formation;
 pub mod landscape;
 pub mod placement;
 pub mod render_pipeline;
