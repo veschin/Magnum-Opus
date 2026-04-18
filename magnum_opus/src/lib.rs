@@ -3,4 +3,6 @@
 
 pub mod core;
 pub mod grid;
+pub mod landscape;
+pub mod resources;
 pub mod world_config;
