@@ -1,11 +1,15 @@
 //! Placement command payload drained by the grid module in `Phase::Commands`.
 //!
-//! `PlaceTile` carries the target grid coordinate. The grid drain validates
-//! bounds + occupancy and spawns a bare entity with a `Position` component.
-//! No Entity field: the drain always spawns a fresh entity.
+//! `PlaceTile` carries the target grid coordinate and an optional building
+//! type. The grid drain validates bounds + occupancy and spawns a fresh
+//! entity with a `Position` component; when `building_type` is Some, the
+//! drain also attaches a `Building` component from the buildings module.
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+use crate::buildings::BuildingType;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub struct PlaceTile {
     pub x: u32,
     pub y: u32,
+    pub building_type: Option<BuildingType>,
 }

@@ -1,6 +1,7 @@
 use super::commands::PlaceTile;
 use super::position::Position;
 use super::resource::Grid;
+use crate::buildings::Building;
 use crate::core::{CommandBus, MetricsRegistry};
 use crate::world_config::WorldConfig;
 use bevy::prelude::{Commands, Local, Res, ResMut};
@@ -34,12 +35,16 @@ pub fn grid_placement_drain_system(
         if grid.occupancy.contains_key(&(cmd.x, cmd.y)) {
             continue;
         }
-        let entity = commands
-            .spawn(Position {
-                x: cmd.x,
-                y: cmd.y,
-            })
-            .id();
+        let position = Position {
+            x: cmd.x,
+            y: cmd.y,
+        };
+        let entity = match cmd.building_type {
+            Some(building_type) => commands
+                .spawn((position, Building { building_type }))
+                .id(),
+            None => commands.spawn(position).id(),
+        };
         grid.occupancy.insert((cmd.x, cmd.y), entity);
     }
 }
