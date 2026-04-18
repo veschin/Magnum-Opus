@@ -27,3 +27,7 @@ features:
     title: "BuildingDB + Building component + placement extension"
     status: planned
     pipeline: lite
+  - id: group-formation
+    title: "Flood-fill groups from adjacent Building entities"
+    status: planned
+    pipeline: lite
