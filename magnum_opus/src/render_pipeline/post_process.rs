@@ -29,7 +29,7 @@ impl Default for PostProcessParams {
     fn default() -> Self {
         Self {
             outline_color: LinearRgba::BLACK,
-            outline_threshold: 0.18,
+            outline_threshold: 0.04,
             posterize_levels: 8.0,
             outline_enabled: 1.0,
             _pad: 0.0,

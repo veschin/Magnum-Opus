@@ -12,7 +12,7 @@ use magnum_opus::render_pipeline::{PostProcessMaterial, PostProcessParams};
 fn post_process_params_defaults_enable_outline_and_posterize() {
     let params = PostProcessParams::default();
 
-    assert_eq!(params.outline_threshold, 0.18);
+    assert_eq!(params.outline_threshold, 0.04);
     assert_eq!(params.outline_color, LinearRgba::BLACK);
     assert_eq!(params.posterize_levels, 8.0);
     assert_eq!(params.outline_enabled, 1.0);
@@ -25,7 +25,7 @@ fn post_process_material_constructs_with_defaults() {
         source: Handle::<Image>::default(),
     };
 
-    assert_eq!(material.params.outline_threshold, 0.18);
+    assert_eq!(material.params.outline_threshold, 0.04);
     assert_eq!(material.params.outline_color, LinearRgba::BLACK);
     assert_eq!(material.params.posterize_levels, 8.0);
 }

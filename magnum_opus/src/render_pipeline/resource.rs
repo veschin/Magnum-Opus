@@ -21,7 +21,7 @@ impl Default for RenderPipelineConfig {
             low_res_height: 270,
 
             outline_enabled: true,
-            outline_threshold: 0.18,
+            outline_threshold: 0.04,
             outline_color: LinearRgba::rgb(0.02, 0.02, 0.03),
 
             toon_bands: 5,

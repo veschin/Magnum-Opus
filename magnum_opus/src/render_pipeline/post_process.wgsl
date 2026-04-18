@@ -31,20 +31,20 @@ fn fragment(in: VertexOutput) -> @location(0) vec4<f32> {
 
     let src = textureSample(source_tex, source_sampler, uv);
 
+    // Roberts cross 2×2 - samples two diagonal pairs around the current
+    // pixel. Produces a 1-texel-thick outline (where 3×3 Sobel spills into
+    // 2-3 texels on either side of the boundary), which nearest-neighbour
+    // preserves as a 1-scale-factor line on screen.
     var edge: f32 = 0.0;
     if (params.outline_enabled > 0.5) {
-        let tl = luminance(textureSample(source_tex, source_sampler, uv + vec2<f32>(-texel.x, -texel.y)).rgb);
-        let tm = luminance(textureSample(source_tex, source_sampler, uv + vec2<f32>( 0.0,     -texel.y)).rgb);
-        let tr = luminance(textureSample(source_tex, source_sampler, uv + vec2<f32>( texel.x, -texel.y)).rgb);
-        let ml = luminance(textureSample(source_tex, source_sampler, uv + vec2<f32>(-texel.x,  0.0)).rgb);
-        let mr = luminance(textureSample(source_tex, source_sampler, uv + vec2<f32>( texel.x,  0.0)).rgb);
-        let bl = luminance(textureSample(source_tex, source_sampler, uv + vec2<f32>(-texel.x,  texel.y)).rgb);
-        let bm = luminance(textureSample(source_tex, source_sampler, uv + vec2<f32>( 0.0,      texel.y)).rgb);
-        let br = luminance(textureSample(source_tex, source_sampler, uv + vec2<f32>( texel.x,  texel.y)).rgb);
+        let c00 = luminance(textureSample(source_tex, source_sampler, uv).rgb);
+        let c10 = luminance(textureSample(source_tex, source_sampler, uv + vec2<f32>(texel.x, 0.0)).rgb);
+        let c01 = luminance(textureSample(source_tex, source_sampler, uv + vec2<f32>(0.0, texel.y)).rgb);
+        let c11 = luminance(textureSample(source_tex, source_sampler, uv + vec2<f32>(texel.x, texel.y)).rgb);
 
-        let gx = -tl - 2.0 * ml - bl + tr + 2.0 * mr + br;
-        let gy = -tl - 2.0 * tm - tr + bl + 2.0 * bm + br;
-        edge = sqrt(gx * gx + gy * gy);
+        let g1 = c00 - c11;
+        let g2 = c10 - c01;
+        edge = sqrt(g1 * g1 + g2 * g2);
     }
 
     if (edge > params.outline_threshold) {
