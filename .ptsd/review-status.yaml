@@ -9,6 +9,11 @@ features:
     tests: absent
     review: passed
     issues: 0
+  manifold:
+    stage: impl
+    tests: absent
+    review: passed
+    issues: 0
   placement:
     stage: impl
     tests: absent

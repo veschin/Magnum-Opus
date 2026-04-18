@@ -35,3 +35,7 @@ features:
     title: "MVP production: ResourceType enum, RecipeDB, OutputBuffer, ProductionState, Miner-only tick advance"
     status: planned
     pipeline: lite
+  - id: manifold
+    title: "Group-level manifold pool: attach to new Groups, collect OutputBuffers"
+    status: planned
+    pipeline: lite
