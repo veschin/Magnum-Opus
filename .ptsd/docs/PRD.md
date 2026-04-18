@@ -412,3 +412,61 @@ Config is under the PTSD contract; render plumbing is outside it (exactly as `Co
 - The color palette lives in one `const` block in `world_render/palette.rs`. Changes require a single-file touch.
 - World-space coordinate math lives in one function `tile_world_pos(x, y, tile_px)`, not inlined into the spawn loop.
 - The example `examples/world_render_smoke.rs` copies the `SCREENSHOT` env pattern from `render_smoke.rs`; PNG output path `/tmp/claude-bevy-world_render_smoke.png`.
+
+---
+
+<!-- feature:render-outline -->
+### F22: render-outline
+
+**Purpose:** Activate the `outline_enabled` flag on `RenderPipelineConfig` with a real shader pass. Sobel over the low-res framebuffer paints black pixels on tile-boundary edges, pushing the flat-colored map from "minimalist pixel" into "fantasy-retro pixel-art" - the visual identity the project was founded on.
+
+**Problem:** F18 reserved `outline_enabled: bool` in the config but shipped no shader (v0 is a pass-through blit). F19 produces sharply-defined tile regions on the low-res target; Sobel on color gradients is the cheapest way to silhouette them without geometry or per-sprite normal maps. Without outlines the scene reads as a modern minimalist palette; with outlines it reads as pixel-art. The change is entirely confined to `RenderPipelinePlugin` - no new sim state, no new PTSD module, no migration of existing render entities.
+
+**Architecture fit:** Pure extension of an existing bevy `Plugin`. Zero new PTSD-tracked resources. The pipeline plugin reads `RenderPipelineConfig.outline_enabled` at `build()`-time (same pattern as the low-res size). When true, the blit entity uses `Mesh2d(Rectangle)` + `MeshMaterial2d<OutlineMaterial>` instead of `Sprite::from_image`. The WGSL source is embedded via `embedded_asset!` per the existing F18 implementation constraint.
+
+**Shader:** `outline.wgsl` is a standard `Material2d` fragment. Samples a 3×3 neighborhood of the source texture via the material sampler, computes Sobel `Gx/Gy` over luminance (`dot(rgb, [0.299, 0.587, 0.114])`), returns the outline color when `sqrt(Gx² + Gy²) > threshold`, otherwise returns the unmodified sample. Texel offsets come from `textureDimensions(source)` - resolution-independent.
+
+**Modules:** None added to the PTSD registry. This feature ships:
+
+1. **`OutlineMaterial` (Rust type in `render_pipeline/outline.rs`)** - derives `AsBindGroup, Asset, TypePath, Clone, Debug`. Fields: `#[uniform(0)] params: OutlineParams`, `#[texture(1)] #[sampler(2)] source: Handle<Image>`. Implements `Material2d` with `fragment_shader()` returning `"embedded://magnum_opus/render_pipeline/outline.wgsl"`.
+2. **`OutlineParams` (Rust type)** - derives `ShaderType, Clone, Debug`. Fields: `threshold: f32`, `color: LinearRgba`.
+3. **`outline.wgsl`** - embedded via `embedded_asset!(app, "outline.wgsl")` in `RenderPipelinePlugin::build`.
+4. **`RenderPipelinePlugin` modification** - registers `Material2dPlugin::<OutlineMaterial>::default()` unconditionally; `setup_low_res_target` branches on `cfg.outline_enabled` to pick `Sprite::from_image` vs `Mesh2d + MeshMaterial2d<OutlineMaterial>`.
+
+**Acceptance criteria:**
+
+- AC1: `OutlineMaterial` is a public type in `magnum_opus::render_pipeline` and derives `AsBindGroup, Asset, TypePath, Clone, Debug`. Fields: `params: OutlineParams` with `#[uniform(0)]`, `source: Handle<Image>` with `#[texture(1)] #[sampler(2)]`. Compile-time check - a test constructs one with a default handle and a default `OutlineParams`.
+- AC2: `OutlineParams` derives `ShaderType, Clone, Debug, Default` with fields `threshold: f32` (default `0.08`) and `color: LinearRgba` (default `LinearRgba::BLACK`).
+- AC3: `RenderPipelinePlugin::build` registers `Material2dPlugin::<OutlineMaterial>::default()` whether or not outline is enabled. Test: construct a minimal `App` with `RenderPipelinePlugin` + required bevy plugins; resource `Assets<OutlineMaterial>` exists after `app.finish()`.
+- AC4: With `outline_enabled = false` (default), `setup_low_res_target` spawns the blit entity via `Sprite::from_image(handle)` (existing behavior, no regression). Checked through the existing MVP screenshot test path - `cargo run --example render_smoke` still produces the black upscaled framebuffer.
+- AC5: `cargo run --example world_render_smoke` with env `OUTLINE=1 SCREENSHOT=1` writes PNG to `/tmp/claude-bevy-world_render_smoke_outline.png`. The example overrides `RenderPipelineConfig.outline_enabled` to `true` before `app.run()` when the env var is set. Manual validation: the PNG visibly shows thin black lines between differently-colored tile regions; adjacent same-color tiles have no line.
+- AC6: `cargo test` - all existing 70 tests continue to pass, plus the F22 compile-time test for `OutlineMaterial`. Zero regressions.
+
+**Implementation constraints (review-only):**
+
+- `outline.wgsl` lives at `magnum_opus/src/render_pipeline/outline.wgsl` and is embedded via `embedded_asset!` - never loaded from disk at runtime.
+- Shader path in `Material2d::fragment_shader()` is `"embedded://magnum_opus/render_pipeline/outline.wgsl"` - hardcoded, not constructed at runtime.
+- `OutlineMaterial` does NOT carry interior mutability on any field.
+- No new resource types added to `RenderPipelineConfig` - threshold and color are embedded in `OutlineParams` attached to the material instance, not exposed as a global config. A future feature may lift them into config if runtime tweaking becomes necessary.
+- The luminance formula is fixed: `dot(rgb, [0.299, 0.587, 0.114])` - standard Rec. 601. No parametrization.
+
+**Non-goals:**
+
+- Toon-shading (luminance quantization) - F23.
+- Posterization (color-channel quantization) - F23.
+- Depth or normal buffer input - flat 2D scene has no useful depth/normal signal; Sobel over color is sufficient for this milestone.
+- Runtime toggling. The flag is read once at plugin build; toggling at runtime requires rebuilding the blit entity, out of scope here.
+- Tunable threshold/color from the UI. Hardcoded defaults until a player-facing settings panel exists (F21+).
+- Outline thickness > 1 low-res pixel. The 3×3 Sobel kernel produces exactly-one-pixel edges; thicker outlines need a dilate pass, deferred.
+- Anti-aliased edges. The output is deliberately hard-edged to match the pixel-art aesthetic.
+
+**Edge cases:**
+
+- `outline_enabled = false` and no attempt to instantiate `OutlineMaterial`: `Assets<OutlineMaterial>` remains empty. `Material2dPlugin` registration is harmless - asset type exists, no materials use it, zero render cost.
+- Uniform tile color region larger than the Sobel kernel: interior pixels have zero gradient, no outline drawn - correct behavior (outline is a boundary, not a fill).
+- Tile boundary between two tiles whose luminance happens to be identical (e.g. two palette entries with the same grayscale): no outline drawn on that boundary. Accepted - the palette is tuned so no two adjacent terrain types share luminance (verified by eye during impl review).
+- Shader compile failure at startup: bevy panics from the render thread. Not caught by the PTSD pipeline; manifests as a runtime crash when `world_render_smoke --outline` is launched. Detection is the `cargo run --example` step in AC5.
+- Window closed before shader compiles: same winit exit path as F18 MVP. No panic.
+- Multi-GPU / backend differences: shader uses no backend-specific features. WebGPU, Vulkan, Metal, OpenGL all compile standard WGSL 1.0.
+
+---
