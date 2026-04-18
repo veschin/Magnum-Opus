@@ -1,27 +1,34 @@
-//! Building sprite palette and geometry. Copied tile_world_pos from
-//! world_render to avoid cross-module coupling; the shared geometry constants
-//! should stay in sync.
+//! Building palette + geometry for the pixel-art pipeline. Each type renders
+//! as a flat-shaded cuboid standing on top of its tile; height varies per
+//! type so the iso silhouettes are distinguishable.
 
 use crate::buildings::BuildingType;
-use bevy::prelude::{Color, Vec3};
+use bevy::color::{LinearRgba, Srgba};
 
-pub const TILE_PX: f32 = 4.0;
-pub const BUILDING_PX: f32 = 3.0;
-const GRID_HALF: f32 = 128.0;
+/// Footprint edge length (XZ) of a building cuboid in world units. Smaller
+/// than `TILE_WORLD_SIZE` so the terrain colour reads around the base.
+pub const BUILDING_WORLD_SIZE: f32 = 0.7;
 
-pub fn building_color(btype: BuildingType) -> Color {
+fn srgb_u8(r: u8, g: u8, b: u8) -> LinearRgba {
+    Srgba::rgb_u8(r, g, b).into()
+}
+
+pub fn building_linear(btype: BuildingType) -> LinearRgba {
     match btype {
-        BuildingType::Miner => Color::srgb_u8(0xd4, 0xa5, 0x4a),
-        BuildingType::Smelter => Color::srgb_u8(0xc8, 0x64, 0x28),
-        BuildingType::Mall => Color::srgb_u8(0xa8, 0x50, 0xc8),
-        BuildingType::EnergySource => Color::srgb_u8(0x64, 0xd6, 0xff),
+        BuildingType::Miner => srgb_u8(0xd4, 0xa5, 0x4a),
+        BuildingType::Smelter => srgb_u8(0xc8, 0x64, 0x28),
+        BuildingType::Mall => srgb_u8(0xa8, 0x50, 0xc8),
+        BuildingType::EnergySource => srgb_u8(0x64, 0xd6, 0xff),
     }
 }
 
-pub fn tile_world_pos(x: u32, y: u32) -> Vec3 {
-    Vec3::new(
-        x as f32 * TILE_PX - GRID_HALF + TILE_PX / 2.0,
-        GRID_HALF - TILE_PX / 2.0 - y as f32 * TILE_PX,
-        0.0,
-    )
+/// Vertical extent of a building's cuboid. Picked for visual differentiation
+/// in iso view; tuning is cosmetic only.
+pub fn building_height(btype: BuildingType) -> f32 {
+    match btype {
+        BuildingType::Miner => 0.5,
+        BuildingType::Smelter => 1.0,
+        BuildingType::Mall => 1.5,
+        BuildingType::EnergySource => 1.2,
+    }
 }

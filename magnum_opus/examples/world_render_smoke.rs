@@ -1,6 +1,16 @@
-//! Visual smoke test: terrain, veins, and placed Buildings on the low-res
-//! pixel-art target. `SCREENSHOT=1` captures a PNG; `OUTLINE=1` switches on
-//! the Sobel outline shader and writes to the outline-tagged path.
+//! Pixel-art pipeline smoke test: runs the full scene (terrain + veins +
+//! placed buildings) through `RenderPipelinePlugin`. The plugin owns the
+//! low-res render target, iso orthographic scene camera, DepthPrepass +
+//! NormalPrepass, and the fullscreen post-process blit (Sobel outline +
+//! posterize + nearest-neighbour upscale). Scene meshes use the shared
+//! `ToonMaterial` which bakes a fixed sun direction and ambient floor into
+//! every fragment, producing flat banded shading.
+//!
+//! Interactive: `cargo run --example world_render_smoke`
+//! Screenshot:  `SCREENSHOT=1 cargo run --example world_render_smoke`
+//!
+//! The `SCREENSHOT` env var routes the window into the Hyprland
+//! `claude-dev-` special workspace and captures a single PNG at frame 45.
 
 use bevy::prelude::*;
 use bevy::render::view::screenshot::{Screenshot, save_to_disk};
@@ -14,28 +24,23 @@ use magnum_opus::landscape::LandscapeModule;
 use magnum_opus::manifold::ManifoldModule;
 use magnum_opus::placement::PlacementInputModule;
 use magnum_opus::recipes_production::{ProductionModule, RecipeDbModule};
-use magnum_opus::render_pipeline::{
-    RenderPipelineConfig, RenderPipelineConfigModule, RenderPipelinePlugin,
-};
+use magnum_opus::render_pipeline::{RenderPipelineConfigModule, RenderPipelinePlugin};
 use magnum_opus::resources::ResourcesModule;
 use magnum_opus::world_config::WorldConfigModule;
 use magnum_opus::world_render::WorldRenderModule;
 
-const SCREENSHOT_PATH_PLAIN: &str = "/tmp/claude-bevy-world_render_smoke.png";
-const SCREENSHOT_PATH_OUTLINE: &str = "/tmp/claude-bevy-world_render_smoke_outline.png";
+const SCREENSHOT_PATH: &str = "/tmp/claude-bevy-world_render_smoke.png";
 
 #[derive(Resource)]
 struct ScreenshotPath(&'static str);
 
 fn main() {
     let screenshot_mode = std::env::var("SCREENSHOT").is_ok();
-    let outline_mode = std::env::var("OUTLINE").is_ok();
 
-    let window_title = match (screenshot_mode, outline_mode) {
-        (true, true) => "claude-dev-world_render_smoke_outline".to_string(),
-        (true, false) => "claude-dev-world_render_smoke".to_string(),
-        (false, true) => "world_render_smoke (outline)".to_string(),
-        (false, false) => "world_render_smoke".to_string(),
+    let window_title = if screenshot_mode {
+        "claude-dev-world_render_smoke".to_string()
+    } else {
+        "magnum-opus: world_render_smoke".to_string()
     };
 
     let mut app = App::new();
@@ -61,27 +66,12 @@ fn main() {
     app.add_view::<BuildingRenderModule>();
     app.add_input::<PlacementInputModule>();
     app.finalize_modules();
-
-    if outline_mode {
-        app.insert_resource(RenderPipelineConfig {
-            low_res_width: 480,
-            low_res_height: 270,
-            outline_enabled: true,
-            toon_bands: 0,
-            posterize_levels: 0,
-        });
-    }
-
     app.add_plugins(RenderPipelinePlugin);
+
     app.add_systems(Startup, seed_demo_placements);
 
     if screenshot_mode {
-        let path = if outline_mode {
-            SCREENSHOT_PATH_OUTLINE
-        } else {
-            SCREENSHOT_PATH_PLAIN
-        };
-        app.insert_resource(ScreenshotPath(path));
+        app.insert_resource(ScreenshotPath(SCREENSHOT_PATH));
         app.add_systems(Update, capture_and_exit);
     }
 
@@ -89,9 +79,8 @@ fn main() {
 }
 
 /// Drop a handful of buildings onto the map so the screenshot shows the full
-/// stack (terrain + veins + groups + sprites).
+/// stack (terrain + veins + groups + meshes).
 fn seed_demo_placements(mut bus: ResMut<CommandBus<PlaceTile>>) {
-    // A small Miner cluster.
     let miner_cluster = [(12, 16), (12, 17), (13, 16), (13, 17)];
     for (x, y) in miner_cluster {
         bus.push(PlaceTile {
@@ -101,7 +90,6 @@ fn seed_demo_placements(mut bus: ResMut<CommandBus<PlaceTile>>) {
         });
     }
 
-    // Smelter row next to the miners.
     let smelter_row = [(14, 16), (14, 17), (15, 16)];
     for (x, y) in smelter_row {
         bus.push(PlaceTile {
@@ -111,7 +99,6 @@ fn seed_demo_placements(mut bus: ResMut<CommandBus<PlaceTile>>) {
         });
     }
 
-    // Mall + EnergySource singleton elsewhere.
     bus.push(PlaceTile {
         x: 30,
         y: 40,

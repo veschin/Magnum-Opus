@@ -1,4 +1,6 @@
 use bevy::MinimalPlugins;
+use bevy::asset::{AssetApp, AssetPlugin};
+use bevy::pbr::StandardMaterial;
 use bevy::prelude::*;
 
 use super::app_ext::AppExt;
@@ -7,6 +9,7 @@ use super::plugin::CorePlugin;
 use super::sim_domain::SimDomain;
 use super::static_data::StaticData;
 use super::view::View;
+use crate::render_pipeline::{PostProcessMaterial, ToonMaterial};
 
 /// Canonical test harness. All module tests go through this.
 ///
@@ -31,6 +34,16 @@ impl Harness {
     pub fn new() -> Self {
         let mut app = App::new();
         app.add_plugins(MinimalPlugins);
+        // View-archetype modules spawn `Mesh3d` + `MeshMaterial3d<StandardMaterial>`.
+        // Their deferred commands request `Assets<Mesh>` / `Assets<StandardMaterial>`
+        // at apply-time; the headless harness must register both asset types so
+        // the tests don't panic with "resource does not exist".
+        app.add_plugins(AssetPlugin::default());
+        app.init_asset::<Mesh>();
+        app.init_asset::<StandardMaterial>();
+        app.init_asset::<Image>();
+        app.init_asset::<ToonMaterial>();
+        app.init_asset::<PostProcessMaterial>();
         app.add_plugins(CorePlugin);
         Self { app }
     }

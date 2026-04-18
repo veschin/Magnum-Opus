@@ -1,5 +1,5 @@
 mod module;
-mod palette;
+pub mod palette;
 mod resource;
 mod systems;
 

@@ -1,46 +1,66 @@
-//! Bevy plugin that installs the low-res render target and the upscale pass.
+//! Bevy plugin that installs the pixel-art render pipeline.
 //!
-//! This plugin is deliberately NOT a core SimDomain/View module. It reaches into
-//! Bevy's render graph via `&mut App` which the core installers do not expose.
-//! The configuration resource `RenderPipelineConfig` is the only PTSD-tracked
-//! surface; everything the plugin spawns is render-private.
+//! Topology:
+//! 1. Low-res off-screen `Image` target sized from `RenderPipelineConfig`.
+//! 2. `Camera3d` (orthographic isometric, `RenderLayers::layer(1)`) rendering
+//!    every scene mesh into the off-screen image.
+//! 3. `Camera2d` (window, `RenderLayers::layer(2)`) rendering a fullscreen
+//!    quad with `MeshMaterial2d<PostProcessMaterial>` that samples the
+//!    off-screen image with nearest-neighbour, runs the Sobel outline +
+//!    posterize pass, and upscales to the window size.
 //!
-//! v0: low-res target + nearest-neighbor upscale blit via `Sprite::from_image`.
-//! v1 (F22): when `outline_enabled = true`, the blit switches to a `Mesh2d` +
-//! `MeshMaterial2d<OutlineMaterial>` pair so a Sobel shader runs during blit.
+//! Scene lighting is baked into `ToonMaterial` uniforms (`sun_direction`,
+//! `ambient_color` pulled from `RenderPipelineConfig` at material creation
+//! time). Bevy's `DirectionalLight` / `AmbientLight` are NOT used - the toon
+//! material shades flat + banded against a single uniform sun direction and
+//! ambient floor, which gives sharper cel-shaded silhouettes than PBR.
 
-use super::outline::{OutlineMaterial, OutlineParams};
+use super::post_process::{PostProcessMaterial, PostProcessParams};
 use super::resource::RenderPipelineConfig;
-use bevy::asset::embedded_asset;
-use bevy::camera::RenderTarget;
+use super::toon::ToonMaterial;
+use bevy::asset::{AssetApp, embedded_asset};
 use bevy::camera::visibility::RenderLayers;
+use bevy::camera::{OrthographicProjection, Projection, RenderTarget, ScalingMode};
 use bevy::image::{Image, ImageSampler, ImageSamplerDescriptor};
+use bevy::pbr::MaterialPlugin;
 use bevy::prelude::*;
 use bevy::render::render_resource::{
     Extent3d, TextureDescriptor, TextureDimension, TextureFormat, TextureUsages,
 };
 use bevy::sprite_render::{Material2dPlugin, MeshMaterial2d};
 
+/// `RenderLayers` bit reserved for scene meshes that the 3D iso camera renders
+/// into the low-res target. Terrain, veins, buildings must all be spawned on
+/// this layer to become visible in the pipeline.
+pub const SCENE_LAYER: usize = 1;
+/// `RenderLayers` bit reserved for the window-space blit quad.
+pub const WINDOW_LAYER: usize = 2;
+
 pub struct RenderPipelinePlugin;
 
 impl Plugin for RenderPipelinePlugin {
     fn build(&self, app: &mut App) {
-        embedded_asset!(app, "outline.wgsl");
-        app.add_plugins(Material2dPlugin::<OutlineMaterial>::default());
-        app.insert_resource(ClearColor(Color::BLACK));
-        app.add_systems(Startup, setup_low_res_target);
-        app.add_systems(Update, fit_blit_sprite_to_window);
+        embedded_asset!(app, "toon.wgsl");
+        embedded_asset!(app, "post_process.wgsl");
+
+        app.init_asset::<ToonMaterial>();
+        app.init_asset::<PostProcessMaterial>();
+        app.add_plugins(MaterialPlugin::<ToonMaterial>::default());
+        app.add_plugins(Material2dPlugin::<PostProcessMaterial>::default());
+        app.insert_resource(ClearColor(Color::srgb(0.60, 0.78, 0.92)));
+        app.add_systems(Startup, setup_pipeline);
+        app.add_systems(Update, fit_blit_quad_to_window);
     }
 }
 
 #[derive(Component)]
-struct BlitSprite;
+struct BlitQuad;
 
-fn setup_low_res_target(
+fn setup_pipeline(
     mut commands: Commands,
     mut images: ResMut<Assets<Image>>,
     mut meshes: ResMut<Assets<Mesh>>,
-    mut outline_materials: ResMut<Assets<OutlineMaterial>>,
+    mut post_process_materials: ResMut<Assets<PostProcessMaterial>>,
     cfg: Option<Res<RenderPipelineConfig>>,
 ) {
     let cfg = cfg.expect(
@@ -72,22 +92,36 @@ fn setup_low_res_target(
     image.resize(size);
     let handle = images.add(image);
 
-    let scene_layer = RenderLayers::layer(1);
-    let window_layer = RenderLayers::layer(2);
+    let scene_layer = RenderLayers::layer(SCENE_LAYER);
+    let window_layer = RenderLayers::layer(WINDOW_LAYER);
 
-    // Camera 0: renders scene layer into the off-screen low-res image.
+    // Camera 0: iso 3D scene camera rendering into the low-res off-screen image.
+    // Position along (1, 1, 1) + looking_at(ORIGIN) yields true-isometric angles
+    // (tilt arctan(1/sqrt(2)) ≈ 35.264°, yaw 45°). Orthographic projection keeps
+    // pixel alignment; viewport_height is tuned so the 64×64 grid occupies the
+    // middle of the frame with buildings big enough to read individually at
+    // the 480×270 low-res resolution.
     commands.spawn((
-        Camera2d,
+        Camera3d::default(),
         Camera {
-            clear_color: ClearColorConfig::Custom(Color::BLACK),
+            clear_color: ClearColorConfig::Custom(Color::srgb(0.60, 0.78, 0.92)),
             order: 0,
             ..default()
         },
         RenderTarget::Image(handle.clone().into()),
+        Projection::from(OrthographicProjection {
+            scaling_mode: ScalingMode::FixedVertical {
+                viewport_height: 50.0,
+            },
+            near: 0.1,
+            far: 500.0,
+            ..OrthographicProjection::default_3d()
+        }),
+        Transform::from_xyz(50.0, 50.0, 50.0).looking_at(Vec3::ZERO, Vec3::Y),
         scene_layer,
     ));
 
-    // Camera 1: renders the window-layer blit entity to the actual window.
+    // Camera 1: renders the window-layer blit quad to the actual window.
     commands.spawn((
         Camera2d,
         Camera {
@@ -98,45 +132,47 @@ fn setup_low_res_target(
         window_layer.clone(),
     ));
 
-    // Blit entity: plain sprite when outline disabled, Material2d quad when enabled.
-    if cfg.outline_enabled {
-        let mesh = meshes.add(Rectangle::new(
-            cfg.low_res_width as f32,
-            cfg.low_res_height as f32,
-        ));
-        let material = outline_materials.add(OutlineMaterial {
-            params: OutlineParams::default(),
-            source: handle,
-        });
-        commands.spawn((
-            Mesh2d(mesh),
-            MeshMaterial2d(material),
-            Transform::default(),
-            BlitSprite,
-            window_layer,
-        ));
-    } else {
-        commands.spawn((
-            Sprite::from_image(handle),
-            Transform::default(),
-            BlitSprite,
-            window_layer,
-        ));
-    }
+    // Fullscreen blit quad. Sized to the low-res resolution; `fit_blit_quad_to_window`
+    // rescales each frame to cover the window while preserving pixel-snapped integer
+    // scale factors (nearest-neighbour upscale).
+    let mesh = meshes.add(Rectangle::new(
+        cfg.low_res_width as f32,
+        cfg.low_res_height as f32,
+    ));
+    let material = post_process_materials.add(PostProcessMaterial {
+        params: PostProcessParams {
+            outline_color: cfg.outline_color,
+            outline_threshold: cfg.outline_threshold,
+            posterize_levels: cfg.posterize_levels as f32,
+            outline_enabled: if cfg.outline_enabled { 1.0 } else { 0.0 },
+            _pad: 0.0,
+        },
+        source: handle,
+    });
+    commands.spawn((
+        Mesh2d(mesh),
+        MeshMaterial2d(material),
+        Transform::default(),
+        BlitQuad,
+        window_layer,
+    ));
 }
 
-fn fit_blit_sprite_to_window(
+fn fit_blit_quad_to_window(
     windows: Query<&Window>,
     cfg: Res<RenderPipelineConfig>,
-    mut sprites: Query<&mut Transform, With<BlitSprite>>,
+    mut quads: Query<&mut Transform, With<BlitQuad>>,
 ) {
     let Ok(window) = windows.single() else {
         return;
     };
+    // Integer upscale only - nearest-neighbour is pixel-perfect only when the
+    // scale factor is a whole number; fractional scales smear low-res pixels
+    // across uneven screen-pixel counts.
     let scale_x = window.width() / cfg.low_res_width as f32;
     let scale_y = window.height() / cfg.low_res_height as f32;
-    let scale = scale_x.min(scale_y).max(1.0);
-    for mut transform in &mut sprites {
+    let scale = scale_x.min(scale_y).floor().max(1.0);
+    for mut transform in &mut quads {
         transform.scale = Vec3::new(scale, scale, 1.0);
     }
 }

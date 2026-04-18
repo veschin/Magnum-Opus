@@ -1,7 +1,7 @@
 use bevy::prelude::Resource;
 use std::collections::BTreeMap;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub enum ResourceKind {
     IronOre,
     CopperOre,

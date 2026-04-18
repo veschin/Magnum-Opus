@@ -1,6 +1,6 @@
 use bevy::prelude::Resource;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
 pub enum TerrainKind {
     #[default]
     Grass,
