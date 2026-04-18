@@ -1,40 +1,9 @@
 features:
-  - id: building-groups
-    title: "Building Groups"
+  - id: world-foundation
+    title: "Grid and world config foundation (StaticData + stub SimDomain)"
+    status: in-progress
+    pipeline: lite
+  - id: world-generation
+    title: "Deterministic terrain noise and clustered resource veins"
     status: planned
-  - id: transport
-    title: "Transport"
-    status: planned
-  - id: world
-    title: "World & Biomes"
-    status: planned
-  - id: creatures
-    title: "Creatures & Combat"
-    status: planned
-  - id: progression
-    title: "Progression"
-    status: planned
-  - id: meta
-    title: "Meta-Progression"
-    status: planned
-  - id: energy
-    title: "Energy"
-    status: planned
-  - id: ux
-    title: "UX Tools"
-    status: planned
-  - id: ecs-engine
-    title: "Cross-Feature Integration"
-    status: planned
-  - id: game-startup
-    title: "Run Initialization"
-    status: planned
-    depends_on: [building-groups, transport, world, creatures, progression, meta, energy, ux]
-  - id: game-render
-    title: "Visual Rendering"
-    status: planned
-    depends_on: [game-startup]
-  - id: game-ui
-    title: "User Interaction"
-    status: planned
-    depends_on: [game-render]
+    pipeline: standard

@@ -1,0 +1,11 @@
+features:
+  world-foundation:
+    stage: prd
+    tests: absent
+    review: passed
+    issues: 0
+  world-generation:
+    stage: prd
+    tests: absent
+    review: passed
+    issues: 0
