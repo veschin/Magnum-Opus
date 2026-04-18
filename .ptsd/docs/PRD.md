@@ -643,3 +643,67 @@ Rejected commands are silently dropped. A future error-reporting feature can sur
 - Buildings occupying the same tile: impossible by grid invariant - F3 drops duplicates.
 
 ---
+
+<!-- feature:recipes-production -->
+### F5a: recipes-production
+
+**Purpose:** First tickable output. Adds `ResourceType` enum, a `RecipeDB` StaticData that maps each `BuildingType` to a production rule, and the per-tick `production_system` that advances an `Eleclipse` ProductionState on every Building entity. Miner buildings have no inputs, so they always produce on completion; Smelter / Mall / EnergySource are defined in the DB but their production waits for F5b (input consumption). MVP-visible effect: after several ticks a Miner's `OutputBuffer` holds a positive amount of `IronOre`.
+
+**Problem:** Prior features build spatial structure (grid, placement, groups) but nothing runs "per tick" in the simulation sense. The first actual tick-driven behavior needs a compact set of components (Recipe, ProductionState, OutputBuffer) and a system in `Phase::Production` that reads the DB, advances state, and writes outputs. Deferring this to a later feature would leave the whole production loop inert.
+
+**Architecture fit:**
+
+1. **`recipes_db` module** (`StaticData`) - owns `RecipeDB { recipes: BTreeMap<BuildingType, RecipeDef> }`. Each `RecipeDef` lists `inputs`, `outputs`, and `duration_ticks`. MVP content:
+   - Miner: inputs = `[]`, outputs = `[(IronOre, 1.0)]`, duration = 4
+   - Smelter: inputs = `[(IronOre, 2.0)]`, outputs = `[(IronBar, 1.0)]`, duration = 4
+   - Mall: inputs = `[]`, outputs = `[]`, duration = 1 (placeholder, F5b will extend)
+   - EnergySource: inputs = `[]`, outputs = `[]`, duration = 1 (placeholder)
+2. **`production` module** (`SimDomain`, `PRIMARY_PHASE = Phase::Production`). Writes nothing in terms of Resources; it only touches components. Declared reads: `RecipeDB`, `BuildingDB`. The installer registers a single system.
+3. **Components:**
+   - `ProductionState { progress: f32, active: bool }` - progress in `[0.0, 1.0]`, advances by `1.0 / duration_ticks` each tick when `active`.
+   - `OutputBuffer { slots: BTreeMap<ResourceType, f32> }` - stores produced amounts pending collection (F6).
+   - `InputBuffer { slots: BTreeMap<ResourceType, f32> }` - defined but unused in F5a (present for component coverage / determinism).
+4. **`ResourceType` enum**: `Wood, Stone, IronOre, IronBar, Coal` (MVP set). Derives `Clone, Copy, Debug, PartialEq, Eq, Hash, Ord, PartialOrd` for map keys.
+5. **Component attachment:** on every tick, the production system queries Building entities that do NOT yet have `ProductionState`; for each, inserts the triple `(ProductionState, OutputBuffer, InputBuffer)` by looking up the Recipe in `RecipeDB`. Lazy attachment avoids a second drain path in F4.
+6. **Advancement logic** (`production_system`):
+   - For each Building with attached ProductionState:
+     - If `!active`: if recipe has `inputs.is_empty()` then `active = true`; otherwise leave as-is (Smelter waits until F5b).
+     - If `active`: `progress += 1.0 / duration_ticks`. When `progress >= 1.0`, add outputs to `OutputBuffer`, reset `progress = 0.0`, set `active = false` (will re-trigger next tick if inputs still satisfied).
+
+**Acceptance criteria:**
+
+- AC1: `RecipeDB.recipes.len() == 4` after Harness build. Each MVP `BuildingType` has an entry.
+- AC2: After placing a Miner and running 5 ticks, the Miner entity has `ProductionState`, `OutputBuffer`, and `InputBuffer` components attached.
+- AC3: After placing a Miner and running `duration_ticks + 2` ticks (e.g. 6), the Miner's `OutputBuffer.slots[IronOre]` is `>= 1.0`.
+- AC4: A Smelter placed without F6 manifold never produces: `OutputBuffer.slots[IronBar]` remains 0.0 after any number of ticks (no input arrives).
+- AC5: A building type (Mall, EnergySource) with empty outputs never increments OutputBuffer but still advances ProductionState.progress each tick (placeholder behavior is documented; F5b may rework).
+- AC6: `ResourceType` derives `Hash, Ord, PartialEq, Eq` - compile-time verified via `BTreeMap<ResourceType, u32>` and `HashMap<ResourceType, u32>` construction.
+- AC7: Single-writer holds on `RecipeDB` - second StaticData claiming `writes: names![RecipeDB]` panics.
+- AC8: All 87 prior tests still pass.
+
+**Implementation constraints (review-only):**
+
+- `RecipeDef.inputs` and `.outputs` are `Vec<(ResourceType, f32)>` (not a BTreeMap) - tuples preserve author ordering and match the F4 BuildingDB shape.
+- `OutputBuffer` / `InputBuffer` use `BTreeMap<ResourceType, f32>` for stable iteration.
+- `production_system` does NOT mutate `Grid` or `GroupIndex` - it writes only to components on Building entities.
+- Duration rounds to tick count; a duration of 1 completes in one tick (progress +1.0). A duration of 0 is forbidden and would divide by zero - the `const` table must not contain zeroes.
+- Float arithmetic uses `f32` across the module. Determinism: single-threaded, no SIMD auto-vectorization at default opt levels -> bit-exact across runs.
+
+**Non-goals:**
+
+- Input consumption (Smelter / synthesis). Deferred to F5b once manifold routing is in place.
+- Recipe switching (player selecting which recipe a building runs). MVP: one recipe per BuildingType, hard-coded.
+- Energy modulation of speed. Energy feature is F8.
+- Quality multipliers. Biome-contextual quality is F2-land / F12.
+- Manifold collection / distribution. Explicit F6 concern.
+- UI feedback of production progress.
+
+**Edge cases:**
+
+- Miner placed at tick 1, queried at tick 1: ProductionState not yet attached (attachment fires at tick 2 because `Added<Building>` filter sees the component only after placement's Commands apply). AC2 uses 5 ticks for safety.
+- Building destroyed mid-production: no destruction path in MVP, so irrelevant. Future: production components are removed along with the entity.
+- Recipe with output already in OutputBuffer: accumulates, not overwrites. `slots.entry(r).or_default() += amount`.
+- Concurrent placement of 100 Miners: attachment and advancement are O(n) per tick each; no batching, no panics.
+- Building variant not in RecipeDB (future): production_system skips it. Warning log in impl. MVP has complete coverage so not tested.
+
+---
