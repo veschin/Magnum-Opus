@@ -470,3 +470,66 @@ Config is under the PTSD contract; render plumbing is outside it (exactly as `Co
 - Multi-GPU / backend differences: shader uses no backend-specific features. WebGPU, Vulkan, Metal, OpenGL all compile standard WGSL 1.0.
 
 ---
+
+<!-- feature:placement -->
+### F3: placement
+
+**Purpose:** Turn player placement intent into grid mutation. Adds the `PlaceTile` command payload and a drain system inside the `grid` module so that pushing a `PlaceTile` onto its `CommandBus` spawns a bare entity with a `Position` component and reserves a cell in `Grid.occupancy`. First real sim-cycle feature - unblocks F4 (buildings attach components to those entities) and F21 (mouse/cursor will push `PlaceTile` from an InputUI module).
+
+**Problem:** F1 shipped `Grid.occupancy` empty on purpose. Single-writer means grid is the only module allowed to mutate it, so the placement command must be drained **inside** grid rather than a separate writer. F3 closes that loop by extending the grid module contract with `commands_in: names![PlaceTile]` and a drain system registered in `Phase::Commands`. The command payload is defined in `grid/commands.rs`; the drain validates bounds + occupancy and spawns a new entity with a `Position` component.
+
+**Architecture fit:**
+
+1. **`grid` module extension** (same `SimDomain`, same `PRIMARY_PHASE = Phase::World`) - contract gains `commands_in: names![PlaceTile]`. `install` gains `ctx.consume_command::<PlaceTile>()` and `ctx.add_command_drain(grid_placement_drain_system)`. Writer single-ness of `Grid` preserved.
+2. **New types:**
+   - `PlaceTile { x: u32, y: u32 }` - public payload struct, `Send + Sync + 'static`. No `Entity` field; drain spawns the entity.
+   - `Position { x: u32, y: u32 }` - public `Component` attached to every placed entity. Minimal MVP shape; F4 will add `Building`, F5 `Recipe`, etc.
+3. **No placement-input module yet.** Tests push `PlaceTile` into `CommandBus<PlaceTile>` directly via `app.world_mut().resource_mut::<CommandBus<PlaceTile>>()`. Real mouse -> command translation is F21's job.
+
+**Drain algorithm:**
+
+```text
+for cmd in bus.drain():
+    if !grid.dims_set: continue                   # bootstrap not yet done
+    if cmd.x >= grid.width or cmd.y >= grid.height: continue   # bounds
+    if grid.occupancy.contains_key(&(cmd.x, cmd.y)): continue  # occupied
+    let entity = commands.spawn(Position { x: cmd.x, y: cmd.y }).id()
+    grid.occupancy.insert((cmd.x, cmd.y), entity)
+```
+
+Rejected commands are silently dropped. A future error-reporting feature can surface them via a `MessageWriter<PlacementRejected>`; F3 scope is silent-drop because nothing consumes rejection yet.
+
+**Acceptance criteria:**
+
+- AC1: `Harness::new().with_data::<WorldConfigModule>().with_sim::<GridModule>().build(); app.world_mut().resource_mut::<CommandBus<PlaceTile>>().push(PlaceTile { x: 3, y: 4 }); app.update(); app.update();` - after the two ticks, `grid.occupancy.contains_key(&(3, 4)) == true`, `grid.occupancy.len() == 1`, and the referenced entity carries `Position { x: 3, y: 4 }`.
+- AC2: Pushing `PlaceTile { x: 100, y: 100 }` (out of bounds for default 64×64 grid) produces zero entities and zero `occupancy` entries after two ticks. No panic.
+- AC3: Pushing two `PlaceTile { x: 7, y: 7 }` commands in sequence then ticking twice - `occupancy.len() == 1` at `(7, 7)`; only the first wins. The system does not overwrite an occupied cell.
+- AC4: `Harness::new().with_sim::<GridModule>().build()` (without `WorldConfigModule`) still panics with `"closed-reads"` on `WorldConfig` - the new `commands_in` entry does not affect the existing read contract.
+- AC5: `CommandBus<PlaceTile>` is initialized when grid is registered, even if no `PlaceTile` has ever been pushed. `app.world().get_resource::<CommandBus<PlaceTile>>().is_some() == true`.
+- AC6: All pre-F3 tests continue to pass. Adding F3 raises the count by the number of new tests in this feature without regressing any existing one.
+
+**Implementation constraints (review-only):**
+
+- `PlaceTile` is a plain data struct (`Send + Sync + 'static`), no interior mutability.
+- `Position` derives `Component, Clone, Copy, Debug, PartialEq, Eq` - zero methods on it in F3.
+- Drain system signature uses `Commands`, `ResMut<CommandBus<PlaceTile>>`, `ResMut<Grid>`, and runs in `Phase::Commands` via `ctx.add_command_drain(..)`. Spawning happens through `Commands::spawn`; the entity id is captured from `.id()` and inserted into `grid.occupancy` in the same system.
+- The drain system is guarded by `if !grid.dims_set { return; }` - during tick 1 the bootstrap system may run after the drain (Phase::Commands precedes Phase::World), so pushing a PlaceTile before tick 2 is a no-op and must not panic.
+- Grid stays the sole writer of `Grid.occupancy`. `single-writer` invariant holds for `Grid`.
+
+**Non-goals:**
+
+- `Building` component, `BuildingDB`, or any building-specific logic - F4.
+- `RemoveBuilding` / `Destroy` commands - out of scope; add when combat or hazards need it.
+- Mouse input, cursor-to-grid raycast, UI feedback - F21.
+- Terrain-type validation (miner must be on Rock/Mountain). Requires `BuildingDB` and its recipe-terrain rules, introduced in F4.
+- Rejection messages (`PlacementRejected { reason }`). Silent drop is sufficient for F3 because nothing consumes rejections yet.
+
+**Edge cases:**
+
+- Empty bus: drain iterates zero times. No state change. Metric `grid.occupancy_count` stays at its previous value.
+- Push before `grid_bootstrap_system` runs (tick 1, `dims_set = false`): drain early-returns for that command; it is consumed by `bus.drain(..)` and dropped. Tests must call at least two `app.update()` calls before asserting, so bootstrap is guaranteed done for commands pushed between tick 1 and tick 2.
+- Bus fed with 100 `PlaceTile` in one tick: all drained, each validated individually. Occupancy grows by the number of distinct in-bounds, unoccupied coordinates among them. No batching or rate-limiting.
+- Bus fed concurrently from multiple InputUI emitters in the future: `CommandBus<T>` is a single Resource; Bevy serializes writes automatically. F3 does not introduce concurrency.
+- Grid width/height change at runtime: not supported - `grid_bootstrap_system` sets them once and the drain reads the fixed values. A future resize feature would need to invalidate occupancy; out of scope.
+
+---
