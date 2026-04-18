@@ -707,3 +707,63 @@ Rejected commands are silently dropped. A future error-reporting feature can sur
 - Building variant not in RecipeDB (future): production_system skips it. Warning log in impl. MVP has complete coverage so not tested.
 
 ---
+
+<!-- feature:manifold -->
+### F6: manifold
+
+**Purpose:** Aggregate every building output inside a group into a shared `Manifold` pool. First system that spans multiple members of the same group: every Miner in a cluster dumps its `OutputBuffer` into the group's `Manifold.slots` each tick. F5b will add the distribute pass (fill InputBuffers from Manifold) so that a Smelter in the same cluster can finally consume; F6 ships collect-only.
+
+**Problem:** F5a produces resources inside per-building OutputBuffers - they pile up forever without a collection path. F7 groups Buildings spatially but does not carry state. F6 marries the two: every Group entity gets a `Manifold` component that acts as the group's resource tank. Collect pass runs in `Phase::Manifold`, downstream of `Phase::Production` (outputs already refreshed this tick) and `Phase::Groups` (group topology already rebuilt).
+
+**Architecture fit:**
+
+1. **`manifold` module** (`SimDomain`, `PRIMARY_PHASE = Phase::Manifold`). No resource writes - operates only on components. Reads `GroupIndex` for diagnostics; declared because the module conceptually depends on the group topology even though at MVP the logic walks Components directly. Single system `manifold_collect_system` runs attach + drain in one pass.
+2. **`Manifold` component** - `{ slots: BTreeMap<ResourceType, f32> }` attached to every Group entity. Created lazily on first tick after a Group spawns.
+3. **Execution order** (guaranteed by `Phase::Groups -> Phase::Production -> Phase::Manifold` chain):
+   - Phase::Groups: `group_formation_system` despawns old groups and spawns new ones. `Commands` apply at end of phase - Group entities exist before Phase::Production begins.
+   - Phase::Production: `production_advance_system` deposits into OutputBuffers.
+   - Phase::Manifold: `manifold_collect_system` runs. First pass: attach `Manifold::default()` to every Group entity that lacks one (via `Commands`). Second pass (same system): for every Building that has a `GroupMember`, drain its `OutputBuffer` into the group's `Manifold.slots`. Buildings without a GroupMember (transient - group_formation removed their GroupMember this tick but the next rebuild will re-attach) are skipped.
+4. **No writes to OutputBuffer from other systems** - collect pass owns the drain. Production writes only when producing; manifold drains after production has written.
+
+**Acceptance criteria:**
+
+- AC1: After placing a Miner + ticking 10 times, the Group entity containing the Miner has a `Manifold` component with `slots[IronOre] > 0.0`.
+- AC2: After collect runs, the Miner's `OutputBuffer.slots[IronOre]` is `0.0` - resources have moved from building to group pool.
+- AC3: Two adjacent Miners in one group, ticked 15 times - the shared `Manifold.slots[IronOre]` equals the sum of both miners' production. Each miner's `OutputBuffer` is empty.
+- AC4: Two disjoint groups each with a Miner - each group's `Manifold.slots[IronOre]` tracks only its own miner's output; no cross-pollination.
+- AC5: Empty grid after many ticks - there are zero Group entities and zero Manifold components. No panic.
+- AC6: All 93 prior tests continue to pass.
+
+**Implementation constraints (review-only):**
+
+- `Manifold` uses `BTreeMap` (determinism).
+- `manifold_collect_system` signature:
+  ```
+  fn manifold_collect_system(
+      mut commands: Commands,
+      new_groups_q: Query<Entity, (With<Group>, Without<Manifold>)>,
+      mut group_manifold_q: Query<&mut Manifold, With<Group>>,
+      mut buildings_q: Query<(&GroupMember, &mut OutputBuffer)>,
+  )
+  ```
+- Drain uses `std::mem::take(&mut output.slots)` to move the old BTreeMap out and replace with empty, then iterate into manifold - a single allocation swap per Building per tick.
+- Entities spawned this tick via `commands.spawn(Manifold::default())` are not visible to `group_manifold_q.get_mut(..)` in the same system invocation (deferred Commands). Attach lands before drain **on the next tick** - first tick of a brand-new group does not collect, next tick does. AC1 ticks 10 times, so this is invisible.
+- No interior mutability on `Manifold`.
+
+**Non-goals:**
+
+- Distribute pass (Manifold -> InputBuffer) - F5b.
+- Priority / fairness policies when multiple input consumers compete. Round-robin, proportional, FIFO - all deferred.
+- Manifold overflow / capacity limits.
+- Cross-group transport (rune paths, pipes) - F9.
+- Manifold observability / debug UI.
+
+**Edge cases:**
+
+- Miner placed at tick 1, checked at tick 2: production hasn't produced yet (duration 4), manifold is empty - correct.
+- Building removed mid-production (future): transition to F5b covers this; F6 alone has no removal path.
+- Group respawned by F7: old Manifold is on the now-despawned entity, new Manifold attaches fresh (empty) on next tick. Resources in the old pool are lost - acceptable because F7 fully rebuilds each tick, not an incremental split.
+- Large collect with 1000 buildings: O(n) walk, no batching. MVP.
+- Building without GroupMember (position-only or mid-rebuild): skipped silently.
+
+---
