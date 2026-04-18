@@ -276,3 +276,60 @@ The `LandscapeGenerated` message is kept explicitly - it satisfies the `closed-m
 - `Landscape.cells` queried before tick 2: may return `Vec::new()` (default) or a fully populated vector, depending on executor ordering. Consumers must gate on `landscape.ready`.
 - All four resource rules simultaneously exclude terrain under a cluster center (e.g. Grass-only area): cluster produces zero veins even if center is valid. Acceptable.
 - IEEE-754 determinism across platforms: f32 math is scalar (no SIMD auto-vectorization at default opt levels), arithmetic order is fixed by single-threaded iteration. Same seed -> identical `cells` on x86 and ARM. Tested in AC2.
+
+---
+
+<!-- feature:render-pipeline -->
+### F18: render-pipeline
+
+**Purpose:** Visual identity for the project - pixel-art look layered over 3D-style models via a low-res off-screen render target and a post-processing chain. Every other render feature draws INTO this feature's target.
+
+**Problem:** Bevy's default render graph emits high-resolution smooth output. `docs/VISUALS.md` requires pixel-art: models render into a low-res framebuffer (480×270), then the pipeline applies outline (Sobel over depth+normal buffers), toon shading (luminance quantization), posterization (color quantization), and nearest-neighbor upscale to window size. Without this layer, impostor sprites look like ordinary 3D and the visual identity is lost. The pipeline is also the single control point: one parameter changes outline thickness / band count / palette for ALL visible content.
+
+**Architecture tension (honest):** core modules live in `Update/PostUpdate/PreUpdate` schedules and work with `Res<T>` / `Query<T>`. Bevy's render graph is an App-setup concern - custom materials, render pipeline handles, extraction into the `RenderApp` subgraph. This framework-level work does not fit `SimInstaller` / `ViewInstaller`. F18 therefore ships **two artifacts**:
+
+1. **`render_pipeline_config` (StaticData module)** - owns the configuration resource `RenderPipelineConfig`, PTSD-trackable under the usual single-writer invariant.
+2. **`RenderPipelinePlugin` (plain bevy plugin, not a PTSD module)** - installs the render target, a camera rendering into it, the post-processing chain, and the upscale pass. Lives alongside `CorePlugin` as infrastructure plumbing. Reads `RenderPipelineConfig` at `build()`-time and applies the corresponding setup.
+
+Config is under the PTSD contract; render plumbing is outside it (exactly as `CorePlugin` itself is). Tests are limited to headless validation of the config resource; visual correctness is verified through an example binary plus manual inspection.
+
+**MVP scope (v0):** low-res target + nearest-neighbor upscale. No outline / toon / posterize yet. Proof that the pipeline is alive - an upscaled black window, which will look pixel-crisp once content arrives via F19. Shaders are added incrementally in v1-v2 after the base ships.
+
+**Modules:**
+
+1. **`render_pipeline_config` (StaticData)** - `RenderPipelineConfig { low_res_width: u32, low_res_height: u32, outline_enabled: bool, toon_bands: u8, posterize_levels: u8 }`. MVP values: 480×270, outline=false, toon_bands=0 (off), posterize_levels=0 (off). Config holder only; shaders activate when flags flip in v1-v2.
+
+2. **`RenderPipelinePlugin` (bevy plugin)** - creates the off-screen texture, an ortho camera that renders into it, and a fullscreen quad with a nearest-neighbor sampler that blits into the window. Reads `RenderPipelineConfig` in `build()` to size the target. Added by the App owner next to `CorePlugin` and Bevy's rendering plugins (`DefaultPlugins` or a partial subset).
+
+**Acceptance criteria:**
+
+- AC1: `Harness::new().with_data::<RenderPipelineConfigModule>().build()` builds successfully and `RenderPipelineConfig` is present with values `{ low_res_width: 480, low_res_height: 270, outline_enabled: false, toon_bands: 0, posterize_levels: 0 }`.
+- AC2: `magnum_opus::render_pipeline::RenderPipelineConfig` derives `Resource, Clone, Debug, PartialEq` - plain data, no interior mutability.
+- AC3: Registering a second StaticData module that also declares `writes: names![RenderPipelineConfig]` panics at build with substring `"single-writer"`.
+- AC4: `cargo run --example render_smoke` opens a window with a nearest-neighbor upscaled black framebuffer and does not panic. Manual validation; not a unit test - asserted through example's run-loop banner and a doc comment at the top of `magnum_opus/examples/render_smoke.rs`. Impl must create the `examples/` directory and register the binary in `Cargo.toml`.
+- AC5: The existing 61 tests continue to pass; `cargo test` runs clean after `RenderPipelineConfigModule` and any F18 tests are added. No existing test regresses.
+
+**Non-goals:**
+
+- Shaders (outline, toon, posterize) - deferred to v1-v2. MVP ships zero shaders.
+- Async asset loading - pipeline operates on a procedurally-created texture, no `AssetServer::load` calls.
+- Anti-aliasing, MSAA, HDR - low-res + nearest-neighbor is intentionally aliased.
+- Content rendering - the MVP window is black; visible content arrives when F19 (`world-render`) uses the target.
+- Performance tuning - 60 FPS is not a contract in MVP, correctness is.
+- Cross-platform shader variants - focus on Linux / native OpenGL / Vulkan from Bevy's default backend.
+- Multi-window support - the pipeline blits to exactly one window. Any second window created by external code receives no upscaled output.
+- Headless CI rendering - the example binary requires a live display; CI coverage for render is an open problem deferred to a later feature (see `~/.claude/plans/render-roadmap.md` §Open Questions #2).
+
+**Edge cases:**
+
+- Window closed immediately after open: `render_smoke` uses the standard winit loop and exits when the user closes the window. Test expectation is "does not panic on close", not "runs N frames".
+- Target resolution > window resolution: upscale becomes downscale; nearest-neighbor sampling still works. Not tested in MVP - assume `Target < Window`.
+- `RenderPipelineConfig` missing when `RenderPipelinePlugin` builds: plugin reads the resource via `World::get_resource` and panics with substring `"RenderPipelineConfig resource missing"` if absent. Requires `render_pipeline_config` module to be registered BEFORE the plugin.
+- Multiple `RenderPipelinePlugin` registrations in a single App: bevy emits its standard plugin-dedup panic. Not our responsibility.
+
+**Implementation constraints (review-only, not runtime-asserted):**
+
+- `RenderPipelineConfig` contains only `u32`/`u8`/`bool` fields; zero interior mutability (`Mutex`/`RefCell`/`Atomic*`/`UnsafeCell`).
+- `RenderPipelinePlugin::build(&self, app: &mut App)` does not mutate existing sim resources (`Grid`, `Landscape`, `ResourceVeins`, etc.) - read-only access to `RenderPipelineConfig`, writes only to render-private resources it owns.
+- Post-processing shaders (v1+) are WGSL, embedded via `include_str!`, never runtime-loaded from disk.
+- The impl creates `magnum_opus/examples/` directory and the `render_smoke.rs` binary; `Cargo.toml` declares it under `[[example]]` with `name = "render_smoke"`.
