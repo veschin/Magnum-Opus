@@ -177,7 +177,7 @@ Features are units of product scope. Each feature ships one or more modules. Dep
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum TerrainKind { Grass, Rock, Water, Lava, Sand, Mountain, Pit }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct TerrainCell {
     pub kind: TerrainKind,
     pub elevation: i8,   // -64..63
@@ -191,7 +191,7 @@ pub enum ResourceKind { IronOre, CopperOre, Stone, Coal }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Quality { Normal, High }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Vein { pub kind: ResourceKind, pub quality: Quality, pub remaining: f32 }
 ```
 
