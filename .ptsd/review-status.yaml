@@ -5,7 +5,7 @@ features:
     review: passed
     issues: 0
   world-generation:
-    stage: prd
+    stage: impl
     tests: absent
     review: passed
     issues: 0

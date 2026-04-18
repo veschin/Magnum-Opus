@@ -5,5 +5,5 @@ features:
     pipeline: lite
   - id: world-generation
     title: "Deterministic terrain noise and clustered resource veins"
-    status: planned
+    status: implemented
     pipeline: standard
