@@ -299,7 +299,7 @@ Config is under the PTSD contract; render plumbing is outside it (exactly as `Co
 
 1. **`render_pipeline_config` (StaticData)** - `RenderPipelineConfig { low_res_width: u32, low_res_height: u32, outline_enabled: bool, toon_bands: u8, posterize_levels: u8 }`. MVP values: 480×270, outline=false, toon_bands=0 (off), posterize_levels=0 (off). Config holder only; shaders activate when flags flip in v1-v2.
 
-2. **`RenderPipelinePlugin` (bevy plugin)** - creates the off-screen texture, an ortho camera that renders into it, and a fullscreen quad with a nearest-neighbor sampler that blits into the window. Reads `RenderPipelineConfig` in `build()` to size the target. Added by the App owner next to `CorePlugin` and Bevy's rendering plugins (`DefaultPlugins` or a partial subset).
+2. **`RenderPipelinePlugin` (bevy plugin)** - creates the off-screen texture, a scene camera that renders 3D content into it, and a fullscreen quad blit camera that samples the off-screen image with nearest-neighbor into the window. Scene camera is `Camera3d` with `Projection::Orthographic` and an isometric `Transform` (tilt ≈ 35.264°, yaw 45°); blit camera stays `Camera2d` over a `Material2d` quad so the outline post-process continues to run in 2D space. Reads `RenderPipelineConfig` in `build()` to size the target. Added by the App owner next to `CorePlugin` and Bevy's rendering plugins (`DefaultPlugins` or a partial subset).
 
 **Acceptance criteria:**
 
@@ -341,7 +341,7 @@ Config is under the PTSD contract; render plumbing is outside it (exactly as `Co
 
 **Purpose:** First visible content - terrain tiles from `Landscape.cells` rendered into the low-res target produced by F18, plus vein markers from `ResourceVeins`. Turns the black window into a procedurally-generated 64×64 map of colored squares.
 
-**Problem:** F2 (`world-generation`) produces `Landscape.cells: Vec<TerrainCell>` headless - the data exists but nothing renders it. F18 (`render-pipeline`) provides a low-res framebuffer and nearest-neighbor upscale - but nothing draws into it. F19 closes that gap: a View module reads `Landscape` and spawns one sprite per tile on the scene render layer, so F18's off-screen camera captures them into the low-res target. For MVP the sprites are flat-colored quads; one color per `TerrainKind`. Vein markers layer on top as smaller tinted quads. Impostor textures (albedo + normal + depth) are deferred to F20 and v1+ of this feature.
+**Problem:** F2 (`world-generation`) produces `Landscape.cells: Vec<TerrainCell>` headless - the data exists but nothing renders it. F18 (`render-pipeline`) provides a low-res framebuffer and nearest-neighbor upscale - but nothing draws into it. F19 closes that gap: a View module reads `Landscape` and spawns one horizontal mesh per tile on the scene render layer, so F18's iso 3D scene camera captures them into the low-res target. For MVP each tile is a flat-shaded `Plane3d` quad on the ground plane (`y = 0`) with `StandardMaterial { unlit: true, base_color: ... }`; one color per `TerrainKind`. Vein markers layer on top as smaller unlit planes slightly above the ground. Impostor textures (albedo + normal + depth) are deferred to F20 and v1+ of this feature.
 
 **Architecture fit:** Standard View archetype. Reads sim-owned resources (`Landscape`, `ResourceVeins`), writes a view-private cache (`WorldSceneCache`) tracking the entities it has spawned. Runs in `PostUpdate`. No commands, no messages.
 
@@ -352,13 +352,13 @@ Config is under the PTSD contract; render plumbing is outside it (exactly as `Co
    - Writes: `WorldSceneCache { tiles: BTreeMap<(u32, u32), Entity>, veins: BTreeMap<(u32, u32), Entity>, synced: bool }`
    - Metrics: gauge `world_render.tiles_drawn`, gauge `world_render.veins_drawn`
    - Installer: `read_resource::<Landscape>()`, `read_resource::<ResourceVeins>()`, `write_resource::<WorldSceneCache>()`, `add_system(world_render_system)`.
-   - `world_render_system`: on each tick, if `Landscape.ready && !cache.synced`, spawns a tile entity per cell with a flat-colored `Sprite` on `RenderLayers::layer(1)` (the scene layer F18's low-res camera watches) at world-space coordinates. Then does the same for each `Vein` on a slightly higher Z. Sets `cache.synced = true`.
+   - `world_render_system`: on each tick, if `Landscape.ready && !cache.synced`, spawns a tile entity per cell with a shared `Plane3d` mesh + unlit `StandardMaterial` on `RenderLayers::layer(1)` (the scene layer F18's iso 3D camera watches) at world-space coordinates. Then does the same for each `Vein` with a smaller plane slightly above the ground. Sets `cache.synced = true`.
 
 **Tile-to-world mapping:**
 
-- Tile size: 4 pixels square in the low-res target (`TILE_PX = 4`). 64 tiles × 4 pixels = 256 pixels across.
-- Tile `(x, y)` centers at Bevy world position `((x as f32 * 4.0) - 126.0, 126.0 - (y as f32 * 4.0), 0.0)`. The -126 offset centers the grid on world origin; y flips because screen y grows down but Bevy world y grows up.
-- Vein markers: 2×2 pixel sprites at the same grid coord with Z = 0.1 so they draw on top of their tile.
+- Tile size: `TILE_WORLD_SIZE = 1.0` world unit per tile. 64 tiles × 1.0 = 64 units across.
+- Tile `(x, y)` centers at Bevy world position `(x as f32 - GRID_HALF, 0.0, y as f32 - GRID_HALF)` where `GRID_HALF = 32.0` (grid centered on origin). Y is the vertical axis (ground plane is `y = 0`); tiles extend on the XZ plane.
+- Vein markers: smaller `Plane3d` (`VEIN_WORLD_SIZE = 0.5`) at the same `(x, z)` with `y = 0.02` so they draw above their tile without Z-fighting.
 
 **Color palette (MVP flat colors):**
 
@@ -387,16 +387,16 @@ Config is under the PTSD contract; render plumbing is outside it (exactly as `Co
 - AC4: Registering `WorldRenderModule` without `LandscapeModule` panics with `"closed-reads"` on `Landscape`.
 - AC5: Registering `WorldRenderModule` without `ResourcesModule` panics with `"closed-reads"` on `ResourceVeins`.
 - AC6: Registering a second View module that declares `writes: names![WorldSceneCache]` panics at build with `"single-writer"`.
-- AC7: `cargo run --example world_render_smoke` opens a window showing 64×64 tiles with distinct colors per `TerrainKind` and vein markers on matching tiles. Manual validation, captured via the screenshot harness (`SCREENSHOT=1`). PNG output path `/tmp/claude-bevy-world_render_smoke.png`.
+- AC7: `cargo run --example world_render_smoke` opens a window showing a 64×64 iso-projected tile grid with distinct colors per `TerrainKind` and vein markers on matching tiles. Manual validation, captured via the screenshot harness (`SCREENSHOT=1`). PNG output path `/tmp/claude-bevy-world_render_smoke.png`.
 
 **Non-goals:**
 
-- Impostor sprites (albedo + normal + depth textures). MVP is flat colors.
-- Per-pixel lighting, normal maps, depth sorting. All sprites are flat 2D on z=0 (tiles) or z=0.1 (veins).
+- Impostor meshes (albedo + normal + depth textures). MVP is flat-shaded unlit.
+- Per-pixel lighting, PBR, real-time shadows. Tile and vein meshes use `StandardMaterial { unlit: true }`; no light sources are registered by this feature.
 - Diff-based incremental sync. The MVP syncs once on first ready tick; runtime terrain mutation (F12 hazards) is the trigger for adding diffs later.
 - Fog-of-war overlay. Comes with F13.
-- Camera control. Uses default ortho camera centered on the grid. Camera input is F21.
-- Scaled tile sizes. `TILE_PX = 4` is a hardcoded constant until a future tuning feature touches it.
+- Camera control. Uses the static iso camera installed by F18 (`RenderPipelinePlugin`). Runtime pan/zoom/click is F21.
+- Scaled tile sizes. `TILE_WORLD_SIZE = 1.0` is a hardcoded constant until a future tuning feature touches it.
 - UI panels, tooltips, notifications. All belong to F21.
 
 **Edge cases:**
@@ -404,13 +404,14 @@ Config is under the PTSD contract; render plumbing is outside it (exactly as `Co
 - Tick 0 (before first `app.update()`): `WorldSceneCache` default returns `synced = false`, empty maps. View system hasn't run yet.
 - Landscape ready but ResourceVeins not ready yet: the View system syncs tiles immediately; veins get synced on the tick after both resources are ready. Test AC1 uses two ticks so both are done before assertion.
 - Duplicate `WorldRenderModule` registration: `duplicate module id` panic (generic registry invariant).
-- Vein position outside grid bounds: impossible by construction - veins are only placed by F2's generator inside `[0, width) × [0, height)`. If a rogue test inserts an out-of-bounds vein, the world coord calculation still produces a valid Bevy position and the sprite renders off-screen; no panic.
+- Vein position outside grid bounds: impossible by construction - veins are only placed by F2's generator inside `[0, width) × [0, height)`. If a rogue test inserts an out-of-bounds vein, the world coord calculation still produces a valid Bevy position and the mesh renders off-screen; no panic.
 
 **Implementation constraints (review-only):**
 
 - `WorldSceneCache` uses `BTreeMap`, not `HashMap`. Zero interior mutability.
-- The color palette lives in one `const` block in `world_render/palette.rs`. Changes require a single-file touch.
-- World-space coordinate math lives in one function `tile_world_pos(x, y, tile_px)`, not inlined into the spawn loop.
+- The color palette lives in one `const`/`match` block in `world_render/palette.rs`. Changes require a single-file touch.
+- World-space coordinate math lives in one function `tile_world_pos(x, y) -> Vec3`, not inlined into the spawn loop. Return value uses `Vec3::new(x - GRID_HALF, 0.0, y - GRID_HALF)` with `GRID_HALF = 32.0`.
+- Tile and vein meshes are shared handles (one `Plane3d` per tile, one per vein marker), created once per sync and reused. Per-terrain / per-resource materials are lazily cached in a local `BTreeMap<TerrainKind, Handle<StandardMaterial>>` inside the system body.
 - The example `examples/world_render_smoke.rs` copies the `SCREENSHOT` env pattern from `render_smoke.rs`; PNG output path `/tmp/claude-bevy-world_render_smoke.png`.
 
 ---
@@ -836,9 +837,9 @@ Rejected commands are silently dropped. A future error-reporting feature can sur
 <!-- feature:building-render -->
 ### F-building-render: building-render
 
-**Purpose:** First visible trace of placement + production inside the render window. A View module that walks every `Building` entity and spawns a matching sprite on the scene render layer, colored by `BuildingType`. Complements `world_render` (terrain + veins) and makes `world_render_smoke` demonstrable: placing a Miner + Smelter + Mall in the example produces four distinct blobs on the upscaled pixel-art map.
+**Purpose:** First visible trace of placement + production inside the render window. A View module that walks every `Building` entity and spawns a matching upright cuboid on the scene render layer, colored by `BuildingType`. Complements `world_render` (terrain + veins) and makes `world_render_smoke` demonstrable: placing a Miner + Smelter + Mall in the example produces distinct volumetric blocks on the iso-projected pixel-art map.
 
-**Problem:** F19 renders terrain and veins but ignores Buildings - a placed Miner is invisible, so the whole sim loop from placement onward has no on-screen evidence. F-building-render closes that gap with a second View module that owns a dedicated `BuildingSceneCache`, diff-syncs sprites against live Building entities each tick, and paints each BuildingType in a reserved color slightly smaller than the underlying tile so the terrain remains visible.
+**Problem:** F19 renders terrain and veins but ignores Buildings - a placed Miner is invisible, so the whole sim loop from placement onward has no on-screen evidence. F-building-render closes that gap with a second View module that owns a dedicated `BuildingSceneCache`, diff-syncs `Cuboid` meshes against live Building entities each tick, and paints each BuildingType in a reserved color with a reserved height so the silhouette in iso projection is recognizable and the underlying tile colour peeks around the base.
 
 **Modules:**
 
@@ -847,10 +848,10 @@ Rejected commands are silently dropped. A future error-reporting feature can sur
    - Writes: `BuildingSceneCache { entities: BTreeMap<Entity, Entity>, synced_frames: u64 }`.
    - Metrics: gauge `building_render.sprites`.
 
-**Tile-to-sprite mapping:**
+**Tile-to-mesh mapping:**
 
-- `BUILDING_PX = 3.0` (smaller than `TILE_PX = 4.0` so the tile color peeks around the edges - makes the pixel-art look "building on top of a tile").
-- World position reuses `tile_world_pos(x, y)` but with Z = 0.2 (above tiles Z=0 and veins Z=0.1).
+- `BUILDING_WORLD_SIZE = 0.7` (footprint smaller than `TILE_WORLD_SIZE = 1.0`, so the tile peeks around the base). Height varies per `BuildingType` via `building_height(btype)`: Miner 0.5, Smelter 1.0, Mall 1.5, EnergySource 1.2.
+- World position reuses `tile_world_pos(x, y)` from `world_render::palette` (imported; no local duplicate). Translation adds `Vec3::new(0.0, building_height(btype) / 2.0, 0.0)` so the cuboid rests on the ground plane instead of intersecting it.
 
 **Color palette:**
 
@@ -863,32 +864,88 @@ Rejected commands are silently dropped. A future error-reporting feature can sur
 
 **Acceptance criteria:**
 
-- AC1: After `Harness` build with building-render module + placing a Miner, ticking twice, `BuildingSceneCache.entities.len() == 1` and maps the Miner entity to a freshly-spawned sprite entity.
-- AC2: Placing four different types (Miner, Smelter, Mall, EnergySource) produces four sprite entities after two ticks.
+- AC1: After `Harness` build with building-render module + placing a Miner, ticking twice, `BuildingSceneCache.entities.len() == 1` and maps the Miner entity to a freshly-spawned mesh entity.
+- AC2: Placing four different types (Miner, Smelter, Mall, EnergySource) produces four mesh entities after two ticks.
 - AC3: `BuildingSceneCache.entities` uses `BTreeMap` (determinism).
 - AC4: Registering a second View module with `writes: names![BuildingSceneCache]` panics with `"single-writer"`.
-- AC5: `cargo run --example world_render_smoke SCREENSHOT=1` - manual validation - PNG shows terrain + veins + several placed Building sprites in distinct colors.
+- AC5: `cargo run --example world_render_smoke SCREENSHOT=1` - manual validation - PNG shows terrain + veins + several placed Building cuboids in distinct colors and heights, silhouetted against the iso-projected ground plane.
 - AC6: All 98 prior tests still pass.
 
 **Implementation constraints (review-only):**
 
 - `BuildingSceneCache` uses `BTreeMap`. Zero interior mutability.
-- Sprite spawn uses `Sprite::from_color(color, Vec2::splat(BUILDING_PX))` on `RenderLayers::layer(1)` (scene layer that feeds F18's low-res target).
+- Mesh spawn uses `Mesh3d(meshes.add(Cuboid::new(BUILDING_WORLD_SIZE, building_height(btype), BUILDING_WORLD_SIZE)))` + `MeshMaterial3d(materials.add(StandardMaterial { base_color: building_color(btype), unlit: true, ..default() }))` on `RenderLayers::layer(1)` (scene layer that feeds F18's iso 3D camera).
 - Diff sync: every tick, walk Building Query, compare against cache, spawn missing / despawn removed. O(n) per tick; n = number of Buildings.
+- Mesh and material handles are shared per `BuildingType` via a local `BTreeMap<BuildingType, (Handle<Mesh>, Handle<StandardMaterial>)>` accumulator inside the system.
 - Same Commands-based roundtrip pattern as `world_render_system`.
 
 **Non-goals:**
 
 - Impostor textures (albedo + normal + depth).
-- Per-pixel lighting on buildings.
+- Per-pixel lighting on buildings. `unlit: true` keeps each face one colour - required so F22 outline (Sobel over luminance) still catches silhouettes cleanly.
 - Animation / procedural effects.
 - Selected / hover highlights (F21).
-- Showing production progress / manifold state on sprite.
+- Showing production progress / manifold state on the cuboid.
 
 **Edge cases:**
 
-- Building despawn (future): sync loop catches missing entity, despawns paired sprite.
-- Building placed but still not visible in Query this tick: sprite appears next tick.
+- Building despawn (future): sync loop catches missing entity, despawns paired mesh.
+- Building placed but still not visible in Query this tick: mesh appears next tick.
 - Very large building count (>1k): full-scan sync is O(n) per tick, acceptable for MVP.
+
+---
+
+### F-render-v2: pixel-art pipeline v2
+
+**Purpose:** Bring the render-pipeline from a black framebuffer + passthrough blit (F18 v0 / F22) to a visible pixel-art look matching `docs/VISUALS.md`: flat-shaded banded toon lighting on every scene mesh, Sobel edge outline over the low-res framebuffer, per-channel posterization, pixel-perfect nearest-neighbour upscale. Consolidates F18/F19/F22/F-building-render updates landed on 2026-04-18.
+
+**Problem:** v0 shipped an alive pipeline but nothing rendered through it - `world_render_smoke` bypassed the plugin entirely and drew into its own perspective camera with PBR `StandardMaterial` + `DirectionalLight`, producing a flat coloured diamond with no visual identity. `RenderPipelineConfig.toon_bands` and `posterize_levels` existed as fields but had no consumer. v2 wires the missing pieces: a `ToonMaterial` Material3d baked onto every terrain tile, vein marker and building cuboid; a `PostProcessMaterial` Material2d running Sobel-over-luminance + posterize on the low-res blit; per-cell elevation jitter on terrain height so neighbouring same-kind tiles stagger vertically and their side faces actually read under iso projection.
+
+**Modules delta (no new PTSD modules, refactor of existing surface):**
+
+1. **`render_pipeline` crate** - adds `ToonMaterial` (Material3d, `uniform: ToonParams { base_color, ambient, sun_dir, bands }`) and `PostProcessMaterial` (Material2d, `uniform: PostProcessParams { outline_color, outline_threshold, posterize_levels, outline_enabled }`). Both shaders embedded via `embedded_asset!`. `RenderPipelinePlugin` adds `MaterialPlugin::<ToonMaterial>` + `Material2dPlugin::<PostProcessMaterial>`, spawns an iso ortho `Camera3d` on `RenderLayers::layer(1)` rendering into the low-res image, a `Camera2d` on `layer(2)` rendering the blit quad, and a fullscreen `Mesh2d + MeshMaterial2d<PostProcessMaterial>` that Sobel-posterize-outputs the low-res target. Pixel-perfect upscale enforced by flooring the scale factor (`scale.floor().max(1.0)`).
+2. **`RenderPipelineConfig`** - defaults flipped: `outline_enabled: true`, `outline_threshold: 0.18`, `toon_bands: 5`, `posterize_levels: 10`. Derive relaxed from `PartialEq, Eq` to `PartialEq` (`LinearRgba` / `Vec3` fields introduce `f32` which breaks `Eq`).
+3. **`world_render`** - every tile uses a single shared unit cuboid mesh with per-cell `Transform::scale.y = cell_top_height(cell)`. `terrain_height + cell_elevation_offset(elevation)` produces ±0.35 jitter on top of the base kind height, so same-kind patches stagger visibly. `terrain_top_y` now takes `TerrainCell` (not `TerrainKind`) so stacked objects respect the jitter. Meshes spawn with `RenderLayers::layer(1)` and `MeshMaterial3d<ToonMaterial>`.
+4. **`building_render`** - cuboids use `ToonMaterial` on `RenderLayers::layer(1)`; building base Y follows the jittered terrain top via the new `terrain_top_y(cell)` signature.
+5. **`core::harness`** - `init_asset::<ToonMaterial>()` + `init_asset::<PostProcessMaterial>()` so headless tests can spawn the new asset types without a full render app.
+6. **`world_render_smoke`** - removes its private camera/light setup. Registers `RenderPipelineConfigModule` and adds `RenderPipelinePlugin` so the full chain (scene camera -> iso ortho -> toon material -> low-res target -> post-process -> upscale) runs end-to-end.
+7. **`outline.rs/outline.wgsl`** removed; replaced by `post_process.rs/post_process.wgsl`.
+
+**Acceptance criteria:**
+
+- AC1: `RenderPipelineConfig::default()` returns `{ low_res_width: 480, low_res_height: 270, outline_enabled: true, outline_threshold: 0.18, toon_bands: 5, posterize_levels: 10, outline_color: near-black }`.
+- AC2: `PostProcessMaterial` and `PostProcessParams` are public, `PostProcessParams::default()` returns `{ outline_threshold: 0.18, outline_color: BLACK, posterize_levels: 8.0, outline_enabled: 1.0 }`. Both derive `Clone, Debug` and `PostProcessParams` also `PartialEq` + `ShaderType`.
+- AC3: `ToonMaterial::default()` returns a material with `bands = 5`, `sun_dir` normalized from `(-1.0, -1.5, -0.3)`, ambient approximately `(0.20, 0.22, 0.28)` linear.
+- AC4: `Harness::new()` registers `Assets<ToonMaterial>` and `Assets<PostProcessMaterial>` - headless harness tests that spawn scene meshes through `world_render` or `building_render` do not panic with "resource does not exist".
+- AC5: `world_render` spawns exactly one `Mesh3d` entity per grid cell (4096 for 64×64), every tile carries `RenderLayers::layer(1)` and `MeshMaterial3d<ToonMaterial>`. Cache mapping stable via `BTreeMap`.
+- AC6: `building_render` spawns `MeshMaterial3d<ToonMaterial>` with `RenderLayers::layer(1)`; base Y = `terrain_top_y(cell)` so buildings never float above or clip into the jittered tile top.
+- AC7: `cargo run --example world_render_smoke SCREENSHOT=1` produces a PNG at `/tmp/claude-bevy-world_render_smoke.png` that visibly demonstrates: (i) outline contours between differently-coloured regions, (ii) posterized palette (discrete colour steps), (iii) banded toon shading showing a visibly different colour between top faces and the iso-visible side faces on buildings and mountain tiles. Manual validation.
+- AC8: Existing 81+ headless tests continue to pass. `render_pipeline_config_smoke` and `render_outline_material_shape` updated to the v2 defaults; all other tests untouched.
+
+**Non-goals:**
+
+- Depth/normal prepass-based outline (Roystan / Roberts cross). Current outline is Sobel-over-luminance on the low-res colour target - cheap and single-pass. Depth-aware edges are a fast-follow when the current look plateaus.
+- Pixel-snap temporal stabilisation (camera view-aligned snap + inverse shift). Static camera makes this irrelevant until pan/zoom lands with F21.
+- Impostor sprites (albedo + normal + depth textures). `ToonMaterial` reads mesh-geometry normals; impostors remain a full-scale follow-up.
+- Runtime tuning UI for `outline_threshold` / `toon_bands` / `posterize_levels`. Defaults hardcoded until a settings panel exists (F21+).
+- Shadow maps. `ToonMaterial` uses a single directional NdotL; no shadow casters.
+- Outline colour modulation from config. `RenderPipelineConfig.outline_color` exists but `PostProcessParams::default()` retains `BLACK`; runtime override happens only in `setup_pipeline` which reads the config once at plugin build.
+
+**Edge cases:**
+
+- `ToonMaterial` on a mesh without vertex normals: `in.world_normal` is undefined, `normalize` yields NaN, fragment becomes black/undefined. All MVP scene meshes (`Cuboid`, `Sphere`) carry normals - no impact today.
+- Outline false-positives inside same-kind tiles: prevented by the luminance palette (see §VISUALS.md) where no two neighbouring terrain kinds share brightness. Grass neighbours Water and Sand, all have distinct luminance.
+- Elevation jitter producing negative heights: `cell_top_height` clamps to `0.05` minimum.
+- Window resolution below low-res: `scale.floor().max(1.0)` returns `1.0`, low-res target renders 1:1 with aliasing from the edges; acceptable degraded state.
+- Multiple `RenderPipelinePlugin` registrations: Bevy's standard plugin-dedup panic applies.
+
+**Implementation constraints (review-only):**
+
+- `ToonParams` fields are plain data (`LinearRgba`, `Vec3`, `u32`); zero interior mutability. Uniform layout handled by `encase`/`ShaderType` derive.
+- Shader paths are embedded via `embedded_asset!` macro; never loaded at runtime.
+- `RenderPipelinePlugin::build` reads `RenderPipelineConfig` once via `Option<Res<RenderPipelineConfig>>` and panics with substring `"RenderPipelineConfig resource missing"` if absent.
+- Pixel-perfect scale enforcement: `scale_x.min(scale_y).floor().max(1.0)` in `fit_blit_quad_to_window`. Fractional scales are never applied.
+- `DepthPrepass + NormalPrepass` components are NOT attached to the scene camera in v2 - they were allocated in a pre-v2 draft but never sampled, wasting GPU on unused passes. When a depth-aware outline lands they get reintroduced together with a custom `ViewNode`.
+- `bevy::sprite_render::Material2d` is the correct 0.18 path for `Material2d` (the `bevy::sprite` crate no longer carries it; `sprite_render::prelude::*` re-exports into `bevy::prelude`).
 
 ---
