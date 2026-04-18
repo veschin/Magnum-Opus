@@ -533,3 +533,54 @@ Rejected commands are silently dropped. A future error-reporting feature can sur
 - Grid width/height change at runtime: not supported - `grid_bootstrap_system` sets them once and the drain reads the fixed values. A future resize feature would need to invalidate occupancy; out of scope.
 
 ---
+
+<!-- feature:buildings -->
+### F4: buildings
+
+**Purpose:** Give placed entities a concrete identity. F3 spawns a bare `Position` entity on every `PlaceTile`; F4 introduces `BuildingDB` with a fixed MVP set of building types (Miner, Smelter, Mall, EnergySource), a `Building` component tagging entity kind, and extends the `PlaceTile` payload so the grid drain can spawn typed entities. Unblocks F5 (recipes attached per building type) and F7 (groups formed from adjacent Building entities).
+
+**Problem:** The MVP production loop needs entities that know what they produce and consume. A tile with a `Position` alone is a pin on a map; a tile with `Position + Building(Miner)` is a resource-producing factory node. F4 closes that gap by loading building definitions from a `BuildingDB` StaticData and attaching the matching `Building` tag at placement time. No recipes/energy/groups yet - the drain merely stamps type metadata; F5 adds the production bits.
+
+**Architecture fit:**
+
+1. **`buildings` module** (`StaticData`) - owns `BuildingDB { defs: BTreeMap<BuildingType, BuildingDef> }`. MVP defs list four types; each carries a short human-readable name. Full recipe/terrain metadata is deferred to F5 when it is actually consumed. `install` inserts the default DB populated from a `const` table in source. No systems.
+2. **`Building` component** (`#[derive(Component, Clone, Copy, Debug, PartialEq, Eq)]`) - single field `building_type: BuildingType`. Lives in `buildings/component.rs` and re-exported at module root.
+3. **`BuildingType` enum** - `Miner | Smelter | Mall | EnergySource`. Derives `Clone, Copy, Debug, PartialEq, Eq, Hash, Ord, PartialOrd` (Ord for BTreeMap key stability).
+4. **`PlaceTile` payload extension** - new field `building_type: Option<BuildingType>`. `None` = F3 behavior (raw Position entity). `Some(t)` = spawn entity with `Position` + `Building { building_type: t }`.
+5. **Grid drain update** - after the existing bounds + occupancy checks, when `cmd.building_type.is_some()` the entity is spawned with both components in one `.spawn((..., ...))` call.
+
+**Acceptance criteria:**
+
+- AC1: `Harness::new().with_data::<WorldConfigModule>().with_data::<BuildingDbModule>().with_sim::<GridModule>().with_input::<PlacementInputModule>().build();` compiles and `BuildingDB` resource exists with four entries after build. `db.defs.len() == 4` and `db.defs.contains_key(&BuildingType::Miner)`.
+- AC2: Push `PlaceTile { x: 5, y: 5, building_type: Some(BuildingType::Miner) }`, tick twice. The entity at `(5, 5)` carries both `Position { x: 5, y: 5 }` and `Building { building_type: BuildingType::Miner }`.
+- AC3: Push `PlaceTile { x: 6, y: 6, building_type: None }`, tick twice. The entity at `(6, 6)` has `Position` but **no** `Building` component (backwards compatibility preserved).
+- AC4: `BuildingType` enum derives `Ord, Hash, PartialEq, Eq` - verified by constructing a `BTreeMap<BuildingType, u32>` and a `HashMap<BuildingType, u32>` in the test with all four variants as keys.
+- AC5: Registering a second `StaticData` module writing `BuildingDB` panics with `"single-writer"` substring.
+- AC6: Adding F4 does not regress any existing 76 tests. Test count rises by the count of new tests only.
+
+**Implementation constraints (review-only):**
+
+- `BuildingDB` uses `BTreeMap`, not `HashMap` (determinism rule from `Grid.occupancy`).
+- `BuildingDef` contains only plain data in F4: `pub name: &'static str`. Recipe and terrain metadata join at F5.
+- `BuildingType` variants are closed - adding a variant requires a matching entry in the `const` definition table and in `BuildingDbModule::install`.
+- `PlaceTile.building_type: Option<BuildingType>` must default to `None` via `#[derive(Default)]` or an explicit constructor if tests rely on it. For F4 the existing tests construct the struct literally with field names, so no default is strictly required - but add `Default` anyway for ergonomics (`PlaceTile::default()` yields zeros + None).
+- No runtime mutation of `BuildingDB`. It is genuinely read-only after install.
+
+**Non-goals:**
+
+- Recipes, ProductionState, InputBuffer, OutputBuffer - F5.
+- Terrain-type validation (Miner only on Rock/Mountain). Requires `Landscape.cells` access inside the drain + a `terrain_requirement` field in `BuildingDef`; add when placement-from-inventory constraint matters. F4 accepts any building on any tile that is in-bounds and unoccupied.
+- Inventory counting (`Mall produces Miner -> inventory[Miner] += 1`). Requires a separate `Inventory` resource and production output routing; belongs to F5+.
+- Upgrade / tier mechanics.
+- Building removal or destruction commands.
+- UI for selecting which building to place (F21).
+
+**Edge cases:**
+
+- `BuildingType` matches nothing in `BuildingDB`: impossible - the enum is closed and the const table defines every variant. If a test injects a rogue value via transmute, behavior is undefined; not our contract.
+- `PlaceTile { building_type: Some(Miner) }` on tile already occupied by another entity: same rejection as F3. No partial insertion; the new entity is never spawned.
+- `PlaceTile { building_type: None }` on valid tile: F3 behavior preserved - single `Position` entity, no `Building` component.
+- BuildingDB read before any tick: resource is inserted at `Startup` (StaticData installer pushes via `insert_resource`), so it's already in the world by the time the first `app.update()` runs.
+- Adding a new `BuildingType` variant without updating the DB table: compile-time exhaustiveness check - the `const` table is a `[(BuildingType, BuildingDef); N]` with explicit variants; missing variants produce a compiler warning at best unless we build the table via `match` on the enum inside the installer. MVP accepts the warning path; can harden later.
+
+---
