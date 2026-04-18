@@ -333,3 +333,82 @@ Config is under the PTSD contract; render plumbing is outside it (exactly as `Co
 - `RenderPipelinePlugin::build(&self, app: &mut App)` does not mutate existing sim resources (`Grid`, `Landscape`, `ResourceVeins`, etc.) - read-only access to `RenderPipelineConfig`, writes only to render-private resources it owns.
 - Post-processing shaders (v1+) are WGSL, embedded via `include_str!`, never runtime-loaded from disk.
 - The impl creates `magnum_opus/examples/` directory and the `render_smoke.rs` binary; `Cargo.toml` declares it under `[[example]]` with `name = "render_smoke"`.
+
+---
+
+<!-- feature:world-render -->
+### F19: world-render
+
+**Purpose:** First visible content - terrain tiles from `Landscape.cells` rendered into the low-res target produced by F18, plus vein markers from `ResourceVeins`. Turns the black window into a procedurally-generated 64×64 map of colored squares.
+
+**Problem:** F2 (`world-generation`) produces `Landscape.cells: Vec<TerrainCell>` headless - the data exists but nothing renders it. F18 (`render-pipeline`) provides a low-res framebuffer and nearest-neighbor upscale - but nothing draws into it. F19 closes that gap: a View module reads `Landscape` and spawns one sprite per tile on the scene render layer, so F18's off-screen camera captures them into the low-res target. For MVP the sprites are flat-colored quads; one color per `TerrainKind`. Vein markers layer on top as smaller tinted quads. Impostor textures (albedo + normal + depth) are deferred to F20 and v1+ of this feature.
+
+**Architecture fit:** Standard View archetype. Reads sim-owned resources (`Landscape`, `ResourceVeins`), writes a view-private cache (`WorldSceneCache`) tracking the entities it has spawned. Runs in `PostUpdate`. No commands, no messages.
+
+**Modules:**
+
+1. **`world_render` (View)**
+   - Reads: `Landscape`, `ResourceVeins`
+   - Writes: `WorldSceneCache { tiles: BTreeMap<(u32, u32), Entity>, veins: BTreeMap<(u32, u32), Entity>, synced: bool }`
+   - Metrics: gauge `world_render.tiles_drawn`, gauge `world_render.veins_drawn`
+   - Installer: `read_resource::<Landscape>()`, `read_resource::<ResourceVeins>()`, `write_resource::<WorldSceneCache>()`, `add_system(world_render_system)`.
+   - `world_render_system`: on each tick, if `Landscape.ready && !cache.synced`, spawns a tile entity per cell with a flat-colored `Sprite` on `RenderLayers::layer(1)` (the scene layer F18's low-res camera watches) at world-space coordinates. Then does the same for each `Vein` on a slightly higher Z. Sets `cache.synced = true`.
+
+**Tile-to-world mapping:**
+
+- Tile size: 4 pixels square in the low-res target (`TILE_PX = 4`). 64 tiles × 4 pixels = 256 pixels across.
+- Tile `(x, y)` centers at Bevy world position `((x as f32 * 4.0) - 126.0, 126.0 - (y as f32 * 4.0), 0.0)`. The -126 offset centers the grid on world origin; y flips because screen y grows down but Bevy world y grows up.
+- Vein markers: 2×2 pixel sprites at the same grid coord with Z = 0.1 so they draw on top of their tile.
+
+**Color palette (MVP flat colors):**
+
+| TerrainKind | Color (sRGB hex) |
+|---|---|
+| Grass | 4a7b2c |
+| Rock | 6c6c6c |
+| Water | 2c4e7b |
+| Lava | c84a1e |
+| Sand | d4b878 |
+| Mountain | 9c9c9c |
+| Pit | 1c1c1c |
+
+| ResourceKind | Marker color |
+|---|---|
+| IronOre | c87858 |
+| CopperOre | b87840 |
+| Stone | b0b0b0 |
+| Coal | 282828 |
+
+**Acceptance criteria:**
+
+- AC1: After `Harness::new().with_data::<WorldConfigModule>().with_sim::<LandscapeModule>().with_sim::<ResourcesModule>().with_view::<WorldRenderModule>().build(); app.update(); app.update();` the resource `WorldSceneCache` has `synced == true`, `tiles.len() == 64 * 64`, and `veins.len() == ResourceVeins.veins.len()`.
+- AC2: Before `Landscape.ready`, `WorldSceneCache.synced == false` and `tiles.is_empty() == true`. The View system is resilient to not-ready sim state - no panic, no partial sync.
+- AC3: `WorldSceneCache.tiles` and `WorldSceneCache.veins` both use `BTreeMap<(u32, u32), Entity>`. `HashMap` forbidden (same determinism rationale as `Grid.occupancy`).
+- AC4: Registering `WorldRenderModule` without `LandscapeModule` panics with `"closed-reads"` on `Landscape`.
+- AC5: Registering `WorldRenderModule` without `ResourcesModule` panics with `"closed-reads"` on `ResourceVeins`.
+- AC6: Registering a second View module that declares `writes: names![WorldSceneCache]` panics at build with `"single-writer"`.
+- AC7: `cargo run --example world_render_smoke` opens a window showing 64×64 tiles with distinct colors per `TerrainKind` and vein markers on matching tiles. Manual validation, captured via the screenshot harness (`SCREENSHOT=1`). PNG output path `/tmp/claude-bevy-world_render_smoke.png`.
+
+**Non-goals:**
+
+- Impostor sprites (albedo + normal + depth textures). MVP is flat colors.
+- Per-pixel lighting, normal maps, depth sorting. All sprites are flat 2D on z=0 (tiles) or z=0.1 (veins).
+- Diff-based incremental sync. The MVP syncs once on first ready tick; runtime terrain mutation (F12 hazards) is the trigger for adding diffs later.
+- Fog-of-war overlay. Comes with F13.
+- Camera control. Uses default ortho camera centered on the grid. Camera input is F21.
+- Scaled tile sizes. `TILE_PX = 4` is a hardcoded constant until a future tuning feature touches it.
+- UI panels, tooltips, notifications. All belong to F21.
+
+**Edge cases:**
+
+- Tick 0 (before first `app.update()`): `WorldSceneCache` default returns `synced = false`, empty maps. View system hasn't run yet.
+- Landscape ready but ResourceVeins not ready yet: the View system syncs tiles immediately; veins get synced on the tick after both resources are ready. Test AC1 uses two ticks so both are done before assertion.
+- Duplicate `WorldRenderModule` registration: `duplicate module id` panic (generic registry invariant).
+- Vein position outside grid bounds: impossible by construction - veins are only placed by F2's generator inside `[0, width) × [0, height)`. If a rogue test inserts an out-of-bounds vein, the world coord calculation still produces a valid Bevy position and the sprite renders off-screen; no panic.
+
+**Implementation constraints (review-only):**
+
+- `WorldSceneCache` uses `BTreeMap`, not `HashMap`. Zero interior mutability.
+- The color palette lives in one `const` block in `world_render/palette.rs`. Changes require a single-file touch.
+- World-space coordinate math lives in one function `tile_world_pos(x, y, tile_px)`, not inlined into the spawn loop.
+- The example `examples/world_render_smoke.rs` copies the `SCREENSHOT` env pattern from `render_smoke.rs`; PNG output path `/tmp/claude-bevy-world_render_smoke.png`.

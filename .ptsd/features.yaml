@@ -11,3 +11,7 @@ features:
     title: "Low-res target and post-processing chain (outline, toon, posterize, upscale)"
     status: implemented
     pipeline: lite
+  - id: world-render
+    title: "Terrain tile sprites rendered into the low-res target"
+    status: implemented
+    pipeline: lite
