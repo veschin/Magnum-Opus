@@ -1,4 +1,9 @@
 features:
+  render-outline:
+    stage: impl
+    tests: absent
+    review: passed
+    issues: 0
   render-pipeline:
     stage: impl
     tests: absent

@@ -15,3 +15,7 @@ features:
     title: "Terrain tile sprites rendered into the low-res target"
     status: implemented
     pipeline: lite
+  - id: render-outline
+    title: "Sobel outline post-process over low-res render target"
+    status: planned
+    pipeline: lite
