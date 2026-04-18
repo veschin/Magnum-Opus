@@ -832,3 +832,63 @@ Rejected commands are silently dropped. A future error-reporting feature can sur
 - Active building (`ProductionState.active == true`): distribute skips - inputs already consumed at cycle start, adding more would create drift. Correct behavior.
 
 ---
+
+<!-- feature:building-render -->
+### F-building-render: building-render
+
+**Purpose:** First visible trace of placement + production inside the render window. A View module that walks every `Building` entity and spawns a matching sprite on the scene render layer, colored by `BuildingType`. Complements `world_render` (terrain + veins) and makes `world_render_smoke` demonstrable: placing a Miner + Smelter + Mall in the example produces four distinct blobs on the upscaled pixel-art map.
+
+**Problem:** F19 renders terrain and veins but ignores Buildings - a placed Miner is invisible, so the whole sim loop from placement onward has no on-screen evidence. F-building-render closes that gap with a second View module that owns a dedicated `BuildingSceneCache`, diff-syncs sprites against live Building entities each tick, and paints each BuildingType in a reserved color slightly smaller than the underlying tile so the terrain remains visible.
+
+**Modules:**
+
+1. **`building_render` module** (`View`).
+   - Reads: no sim resources required (walks components via Query).
+   - Writes: `BuildingSceneCache { entities: BTreeMap<Entity, Entity>, synced_frames: u64 }`.
+   - Metrics: gauge `building_render.sprites`.
+
+**Tile-to-sprite mapping:**
+
+- `BUILDING_PX = 3.0` (smaller than `TILE_PX = 4.0` so the tile color peeks around the edges - makes the pixel-art look "building on top of a tile").
+- World position reuses `tile_world_pos(x, y)` but with Z = 0.2 (above tiles Z=0 and veins Z=0.1).
+
+**Color palette:**
+
+| BuildingType | Color (sRGB hex) |
+|---|---|
+| Miner | d4a54a |
+| Smelter | c86428 |
+| Mall | a850c8 |
+| EnergySource | 64d6ff |
+
+**Acceptance criteria:**
+
+- AC1: After `Harness` build with building-render module + placing a Miner, ticking twice, `BuildingSceneCache.entities.len() == 1` and maps the Miner entity to a freshly-spawned sprite entity.
+- AC2: Placing four different types (Miner, Smelter, Mall, EnergySource) produces four sprite entities after two ticks.
+- AC3: `BuildingSceneCache.entities` uses `BTreeMap` (determinism).
+- AC4: Registering a second View module with `writes: names![BuildingSceneCache]` panics with `"single-writer"`.
+- AC5: `cargo run --example world_render_smoke SCREENSHOT=1` - manual validation - PNG shows terrain + veins + several placed Building sprites in distinct colors.
+- AC6: All 98 prior tests still pass.
+
+**Implementation constraints (review-only):**
+
+- `BuildingSceneCache` uses `BTreeMap`. Zero interior mutability.
+- Sprite spawn uses `Sprite::from_color(color, Vec2::splat(BUILDING_PX))` on `RenderLayers::layer(1)` (scene layer that feeds F18's low-res target).
+- Diff sync: every tick, walk Building Query, compare against cache, spawn missing / despawn removed. O(n) per tick; n = number of Buildings.
+- Same Commands-based roundtrip pattern as `world_render_system`.
+
+**Non-goals:**
+
+- Impostor textures (albedo + normal + depth).
+- Per-pixel lighting on buildings.
+- Animation / procedural effects.
+- Selected / hover highlights (F21).
+- Showing production progress / manifold state on sprite.
+
+**Edge cases:**
+
+- Building despawn (future): sync loop catches missing entity, despawns paired sprite.
+- Building placed but still not visible in Query this tick: sprite appears next tick.
+- Very large building count (>1k): full-scan sync is O(n) per tick, acceptable for MVP.
+
+---
