@@ -767,3 +767,68 @@ Rejected commands are silently dropped. A future error-reporting feature can sur
 - Building without GroupMember (position-only or mid-rebuild): skipped silently.
 
 ---
+
+<!-- feature:manifold-distribute -->
+### F5b: manifold-distribute
+
+**Purpose:** Close the production cycle: move resources from a group's `Manifold.slots` into its members' `InputBuffer.slots` so that Smelter-style buildings (ones with non-empty `Recipe.inputs`) can finally trigger. Completes the factory loop - after F5b a Miner next to a Smelter converts IronOre into IronBar automatically with no player intervention beyond placement.
+
+**Problem:** F5a advances production only when every input is already on the building's InputBuffer, and F6 moves production outputs into the group pool. Nothing bridges pool -> next consumer. F5b closes that gap with a second system running in `Phase::Manifold`, explicitly ordered **after** the collect pass so outputs from this tick are eligible for distribution the same tick.
+
+**Architecture fit:**
+
+1. **`manifold` module extension** - `manifold_distribute_system` is added alongside the collect system. Both run in `Phase::Manifold`; intra-phase ordering is enforced with `.chain()`: `collect -> distribute`. Contract gains `reads: names![RecipeDB]`.
+2. **Distribution policy (MVP greedy):**
+   - For every Building with `Recipe + InputBuffer + GroupMember` that is **not** currently active (`!ProductionState.active`):
+     - Look up the RecipeDef.
+     - If `inputs.is_empty()`: skip (nothing to distribute).
+     - For each `(resource, amount)` in inputs, compute `needed = amount - input_buffer.slots[resource]`. If all needed <= 0: already satisfied, skip.
+     - Attempt to pull the shortfall from the group's Manifold. If the pool has enough of **every** needed resource, deduct from the pool and add to the building's InputBuffer.
+     - If the pool cannot fully satisfy the recipe, leave InputBuffer unchanged (no partial draws). MVP keeps atomicity: building either gets a full batch or nothing. No fairness between contenders.
+3. **Ordering guarantees:**
+   - collect (Phase::Manifold, chained first) drains OutputBuffers into Manifold.slots.
+   - distribute (Phase::Manifold, chained second) moves Manifold -> InputBuffer.
+   - Production advance runs next tick (Phase::Production < Phase::Manifold in chain order means production runs BEFORE manifold within the tick; the InputBuffer population is therefore consumed on the following tick).
+4. **No new modules, no new components.** Pure extension of manifold.
+
+**Acceptance criteria:**
+
+- AC1: After placing a Miner at `(5, 5)` and a Smelter at `(5, 6)` (cardinal adjacent -> same group), ticking 30 times, the Smelter's `OutputBuffer.slots[IronBar]` is `>= 1.0`.
+- AC2: In the same setup, after 30 ticks the group's Manifold still holds no more IronOre than the Smelter's current InputBuffer could not absorb - i.e. IronOre flows through the pool, not pools up indefinitely. Strictly: `manifold.slots[IronOre] < 10.0` after 30 ticks.
+- AC3: A lone Smelter (no Miner in the group) after 30 ticks has `OutputBuffer.slots[IronBar] == 0.0` - still blocked on inputs as in F5a AC4.
+- AC4: Two Miners + one Smelter in one group, 40 ticks - Smelter has produced multiple IronBars (`>= 2.0`), Manifold.slots[IronOre] remains bounded (`<= 10.0`).
+- AC5: No regression - 98 prior tests continue to pass.
+
+**Implementation constraints (review-only):**
+
+- Distribution is **atomic per recipe cycle**: all inputs for one recipe start are drawn in a single pass or none are drawn. This prevents deadlocks where two buildings each take half an input and leave each other starved.
+- Distribution does not consider priority, building order, or turn-taking. First Building the query iterator yields wins; BTreeMap iteration order provides determinism.
+- `manifold_distribute_system` signature:
+  ```
+  fn manifold_distribute_system(
+      db: Res<RecipeDB>,
+      mut groups_q: Query<&mut Manifold, With<Group>>,
+      mut buildings_q: Query<(&Recipe, &ProductionState, &GroupMember, &mut InputBuffer)>,
+  )
+  ```
+- The two systems (`collect`, `distribute`) are added via `ctx.add_system((collect, distribute).chain())` inside the module installer.
+- `ProductionState` is read-only in distribute - only production_advance_system flips `active`.
+- Float arithmetic: deducts are `*slots.entry(*r).or_default() -= amount`, strictly greater-equal pre-check guarantees no negative pool.
+
+**Non-goals:**
+
+- Fairness policies. A follow-up feature can replace greedy first-come with round-robin / proportional / priority-based.
+- Cross-group distribution (rune paths / pipes). F9 territory.
+- Quality-aware distribution (HIGH vs NORMAL preference). Resolved when F14 opus-quality lands.
+- Energy modulation. F8.
+- Partial fills or buffer spillover.
+
+**Edge cases:**
+
+- Recipe with zero inputs (Miner, Mall, EnergySource): distribute skips - nothing to move. Collect still drains outputs normally.
+- Manifold empty: distribute walks all buildings, none satisfied, pool unchanged.
+- InputBuffer already full (building already has amount >= required): no additional draw, pool unchanged.
+- Multiple Smelters in one group, one Miner: the first Smelter the BTreeMap iterator serves gets the batch; the second waits for the next complete batch. Determinism preserved by BTreeMap order.
+- Active building (`ProductionState.active == true`): distribute skips - inputs already consumed at cycle start, adding more would create drift. Correct behavior.
+
+---
