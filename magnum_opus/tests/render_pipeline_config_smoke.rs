@@ -14,5 +14,5 @@ fn render_pipeline_config_inserted_with_pixel_art_defaults() {
     assert_eq!(cfg.low_res_height, 270);
     assert!(cfg.outline_enabled);
     assert_eq!(cfg.toon_bands, 5);
-    assert_eq!(cfg.posterize_levels, 8);
+    assert_eq!(cfg.posterize_levels, 10);
 }
