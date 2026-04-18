@@ -6,6 +6,7 @@ pub mod core;
 pub mod grid;
 pub mod group_formation;
 pub mod landscape;
+pub mod manifold;
 pub mod placement;
 pub mod recipes_production;
 pub mod render_pipeline;

@@ -1,4 +1,11 @@
 //! Full-rebuild group-formation. See F7 PRD for rationale.
+//!
+//! Optimisation added for F6: the system captures a Local signature of the
+//! current Building layout and skips the entire rebuild when the signature
+//! matches the previous tick. This keeps `Group` entity ids stable across
+//! ticks so that `Manifold` components attached by F6 persist accumulated
+//! resources. When placement adds or removes a Building, the signature
+//! changes and the full flood-fill rebuild runs.
 
 use super::component::{Group, GroupMember};
 use super::resource::GroupIndex;
@@ -13,7 +20,18 @@ pub fn group_formation_system(
     buildings_q: Query<(Entity, &Position), With<Building>>,
     existing_members_q: Query<Entity, With<GroupMember>>,
     existing_groups_q: Query<Entity, With<Group>>,
+    mut last_signature: Local<Option<BTreeSet<(u32, u32, Entity)>>>,
 ) {
+    let current_signature: BTreeSet<(u32, u32, Entity)> = buildings_q
+        .iter()
+        .map(|(e, p)| (p.x, p.y, e))
+        .collect();
+
+    if last_signature.as_ref() == Some(&current_signature) {
+        return;
+    }
+    *last_signature = Some(current_signature.clone());
+
     for entity in existing_groups_q.iter() {
         commands.entity(entity).despawn();
     }
