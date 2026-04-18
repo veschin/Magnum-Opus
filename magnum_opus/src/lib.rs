@@ -7,3 +7,4 @@ pub mod landscape;
 pub mod render_pipeline;
 pub mod resources;
 pub mod world_config;
+pub mod world_render;
