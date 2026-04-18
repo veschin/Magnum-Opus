@@ -19,7 +19,11 @@ fn placement_drain_inserts_entity_with_position() {
 
     app.world_mut()
         .resource_mut::<CommandBus<PlaceTile>>()
-        .push(PlaceTile { x: 3, y: 4 });
+        .push(PlaceTile {
+            x: 3,
+            y: 4,
+            ..Default::default()
+        });
 
     app.update();
     app.update();

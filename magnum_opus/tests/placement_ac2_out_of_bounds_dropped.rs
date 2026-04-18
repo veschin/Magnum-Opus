@@ -18,7 +18,11 @@ fn out_of_bounds_placement_is_dropped() {
 
     app.world_mut()
         .resource_mut::<CommandBus<PlaceTile>>()
-        .push(PlaceTile { x: 100, y: 100 });
+        .push(PlaceTile {
+            x: 100,
+            y: 100,
+            ..Default::default()
+        });
 
     app.update();
     app.update();

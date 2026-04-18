@@ -18,8 +18,16 @@ fn occupied_tile_rejects_subsequent_placement() {
 
     {
         let mut bus = app.world_mut().resource_mut::<CommandBus<PlaceTile>>();
-        bus.push(PlaceTile { x: 7, y: 7 });
-        bus.push(PlaceTile { x: 7, y: 7 });
+        bus.push(PlaceTile {
+            x: 7,
+            y: 7,
+            ..Default::default()
+        });
+        bus.push(PlaceTile {
+            x: 7,
+            y: 7,
+            ..Default::default()
+        });
     }
 
     app.update();
