@@ -1,4 +1,9 @@
 features:
+  building-render:
+    stage: impl
+    tests: absent
+    review: passed
+    issues: 0
   buildings:
     stage: impl
     tests: absent

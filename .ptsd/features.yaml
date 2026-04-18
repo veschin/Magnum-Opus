@@ -43,3 +43,7 @@ features:
     title: "Manifold distribute pass feeds InputBuffers; Smelter consumes to produce IronBar"
     status: planned
     pipeline: lite
+  - id: building-render
+    title: "Sprites for placed Building entities over terrain"
+    status: planned
+    pipeline: lite
