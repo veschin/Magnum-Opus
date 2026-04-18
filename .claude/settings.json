@@ -5,17 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/ptsd-context.sh"
-          }
-        ]
-      }
-    ],
-    "UserPromptSubmit": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/ptsd-context.sh"
+            "command": "/home/veschin/ai/magnum-opus/.claude/hooks/ptsd-context.sh"
           }
         ]
       }
@@ -26,16 +16,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/ptsd-gate.sh"
-          }
-        ]
-      },
-      {
-        "matcher": "Read",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/check-file-size.sh"
+            "command": "/home/veschin/ai/magnum-opus/.claude/hooks/ptsd-gate.sh"
           }
         ]
       }
@@ -46,11 +27,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/ptsd-track.sh"
-          },
-          {
-            "type": "command",
-            "command": "$CLAUDE_PROJECT_DIR/.claude/hooks/cargo-fmt.sh"
+            "command": "/home/veschin/ai/magnum-opus/.claude/hooks/ptsd-track.sh"
           }
         ]
       }

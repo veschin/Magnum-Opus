@@ -3,6 +3,8 @@ name: write-bdd
 description: Use when writing Gherkin BDD scenarios for a feature
 ---
 
+> **Profile gate:** Only for `full` and `standard` pipelines. Skip for `lite`. Check: `ptsd context --agent`
+
 ## Instructions
 
 1. Write one scenario per acceptance criterion in the PRD.
@@ -15,7 +17,7 @@ description: Use when writing Gherkin BDD scenarios for a feature
 ## Common Mistakes
 
 - Writing scenarios that depend on each other or share state.
-- Missing error path scenarios — every error condition in the PRD needs a scenario.
+- Missing error path scenarios -- every error condition in the PRD needs a scenario.
 - Using abstract values instead of concrete seed data in Given steps.
 - Stacking And/But steps instead of writing focused Given/When/Then.
-- Forgetting the @feature:<id> tag — ptsd uses this to link BDD to features.
+- Forgetting the @feature:<id> tag -- ptsd uses this to link BDD to features.

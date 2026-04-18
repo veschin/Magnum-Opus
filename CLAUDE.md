@@ -77,32 +77,35 @@ If `cargo build` or `cargo test` numbers in this file start looking off, you wer
 
 PTSD (iron law) > User (context provider) > Assistant (executor)
 
-- PTSD decides what CAN and CANNOT be done. Pipeline, gates, validation - non-negotiable.
-  Hooks enforce this automatically - writes that violate pipeline are BLOCKED.
+- PTSD decides what CAN and CANNOT be done. Pipeline, gates, validation -- non-negotiable.
+  Hooks enforce this automatically -- writes that violate pipeline are BLOCKED.
 - User provides context and requirements. User also follows ptsd rules.
 - Assistant executes within ptsd constraints. Writes code, docs, tests on behalf of user.
 
 ## Session Start Protocol
 
 EVERY session, BEFORE any work:
-1. Run: ptsd context --agent - see full pipeline state
-2. Run: ptsd task next --agent - get next task
+1. Run: ptsd context --agent -- see full pipeline state
+2. Run: ptsd task next --agent -- get next task
 3. Follow output exactly.
 
 ## Commands (always use --agent flag)
 
-- ptsd context --agent              - full pipeline state (auto-injected by hooks)
-- ptsd status --agent               - project overview
-- ptsd task next --agent            - next task to work on
-- ptsd task update <id> --status WIP - mark task in progress
-- ptsd validate --agent             - check pipeline before commit
-- ptsd feature list --agent         - list all features
-- ptsd seed init <id> --agent       - initialize seed directory
-- ptsd gate-check --file <path> --agent - check if file write is allowed
+- ptsd context --agent              -- full pipeline state (auto-injected by hooks)
+- ptsd status --agent               -- project overview
+- ptsd task next --agent            -- next task to work on
+- ptsd task update <id> --status WIP -- mark task in progress
+- ptsd validate --agent             -- check pipeline before commit
+- ptsd feature list --agent         -- list all features
+- ptsd seed init <id> --agent       -- initialize seed directory
+- ptsd gate-check --file <path> --agent -- check if file write is allowed
+- ptsd test map --feature <id> <test-file> -- map test without BDD (for lite pipeline)
+- ptsd feature pipeline <id> <profile> -- change feature pipeline
+- ptsd migrate --agent            -- migrate project to current version
 
 ## Skills
 
-PTSD pipeline skills are in `.claude/skills/` - auto-loaded when relevant.
+PTSD pipeline skills are in `.claude/skills/` -- auto-loaded when relevant.
 
 | Skill | When to Use |
 |-------|------------|
@@ -122,12 +125,23 @@ PTSD pipeline skills are in `.claude/skills/` - auto-loaded when relevant.
 
 Use the corresponding write skill, then review skill at each pipeline stage.
 
-## Pipeline (strict order, no skipping)
+Note: write-seed is only required for full pipeline. write-bdd is required for full and standard pipelines. Lite pipeline skips both -- write tests directly from PRD.
 
-PRD -> Seed -> BDD -> Tests -> Implementation
+## Pipeline Profiles
 
-Each stage requires review score >= 7 before advancing.
-Hooks enforce gates automatically - blocked writes show the reason.
+Each feature has a pipeline profile that determines required stages:
+
+| Profile | Stages | Use For |
+|---------|--------|---------|
+| full | PRD -> Seed -> BDD -> Tests -> Impl | Complex, data-heavy features |
+| standard | PRD -> BDD -> Tests -> Impl | Default. Most features |
+| lite | PRD -> Tests -> Impl | Simple utilities, config |
+
+Check feature pipeline: `ptsd feature show <id> --agent`
+Change pipeline: `ptsd feature pipeline <id> full|standard|lite`
+
+Each required stage needs review score >= 7 before advancing.
+Hooks enforce gates automatically -- blocked writes show the reason.
 
 ## Rules
 
@@ -139,6 +153,33 @@ Hooks enforce gates automatically - blocked writes show the reason.
 - COMMIT FORMAT: [SCOPE] type: message
   Scopes: PRD, SEED, BDD, TEST, IMPL, TASK, STATUS
   Types: feat, add, fix, refactor, remove, update
+
+## Troubleshooting
+
+When ptsd status/validate shows unexpected results, debug with these steps:
+
+| Symptom | Cause | Fix |
+|---------|-------|-----|
+| TESTS:0 but test files exist | Tests not mapped to features | `ptsd test map .ptsd/bdd/<id>.feature <test-file>` or `ptsd test map --feature <id> <test-file>` (lite pipeline) |
+| BDD:0 but .feature files exist | State hashes empty, SyncState not run | `ptsd status --agent` triggers sync; if still 0, check `.ptsd/bdd/<id>.feature` has `@feature:<id>` tag on line 1 |
+| Feature stuck at wrong stage | review-status.yaml stale or stage not advanced | Run `ptsd review <id> <stage> <score>` to advance; check `ptsd context --agent` for blockers |
+| "no test files mapped" on `ptsd test run` | Test mapping missing in state.yaml | `ptsd test map .ptsd/bdd/<id>.feature <test-file>` or `--feature <id> <test-file>` |
+| Gate blocks file write | File not in allowed list for current stage | Check `ptsd gate-check --file <path> --agent`; advance feature to correct stage first |
+| Validate shows "mock detected" | Test file contains mock/stub patterns | Replace mocks with real file-based tests in temp directories |
+| Regression warning on status | Artifact file changed after stage was reviewed | Re-review the stage: `ptsd review <id> <stage> <score>` |
+
+### Debug flow
+1. `ptsd context --agent` -- shows next action, blockers, stage per feature
+2. `ptsd feature show <id> --agent` -- shows artifact counts and test stats
+3. `ptsd validate --agent` -- shows all pipeline violations
+4. Check `.ptsd/state.yaml` -- hashes, test mappings, stages
+5. Check `.ptsd/review-status.yaml` -- review verdicts per feature
+
+### Test mapping
+Features need test files mapped to track results:
+- Standard/full pipeline: `ptsd test map .ptsd/bdd/<id>.feature <test-file>` (reads @feature tag from BDD)
+- Lite pipeline (no BDD): `ptsd test map --feature <id> <test-file>` (direct mapping)
+Without mapping, ptsd cannot track test results per feature.
 
 ## Forbidden
 
