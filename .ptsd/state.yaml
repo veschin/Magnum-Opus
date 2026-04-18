@@ -84,12 +84,29 @@ features:
       seed: 389ca1603942d519de9eded952f00a1c892125b3a8dabcacccce770ba530dc7c
     scores:
   world-foundation:
-    stage: prd
+    stage: impl
     hashes:
+      test_results: passed:1 failed:0
+      test_status: passing
     scores:
+      impl:
+        score: 9
+        at: "2026-04-18T10:47:46.685520759+03:00"
       prd:
         score: 8
         at: "2026-04-18T10:40:44.514832248+03:00"
+      tests:
+        score: 9
+        at: "2026-04-18T10:45:58.889138038+03:00"
+    tests:
+      - feature:world-foundation::magnum_opus/tests/world_config_smoke.rs
+      - feature:world-foundation::magnum_opus/tests/grid_bootstrap.rs
+      - feature:world-foundation::magnum_opus/tests/grid_metrics.rs
+      - feature:world-foundation::magnum_opus/tests/grid_alone_closed_reads_panics.rs
+      - feature:world-foundation::magnum_opus/tests/grid_duplicate_writer_panics.rs
+      - feature:world-foundation::magnum_opus/tests/grid_occupancy_btreemap.rs
+      - feature:world-foundation::magnum_opus/tests/world_config_duplicate_module_id_panics.rs
+      - feature:world-foundation::magnum_opus/tests/grid_default_before_bootstrap.rs
   world-generation:
     stage: prd
     hashes:

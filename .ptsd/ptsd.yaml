@@ -5,7 +5,7 @@ project:
 testing:
   runner: ".ptsd/test-runner.sh"
   patterns:
-    files: ["magnum_opus/src/tests/**/*.rs", "magnum_opus/src/tests/*.rs"]
+    files: ["magnum_opus/tests/**/*.rs", "magnum_opus/tests/*.rs"]
 
 review:
   min_score: 7

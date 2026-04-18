@@ -1,6 +1,6 @@
 features:
   world-foundation:
-    stage: prd
+    stage: impl
     tests: absent
     review: passed
     issues: 0

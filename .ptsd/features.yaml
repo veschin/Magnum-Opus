@@ -1,7 +1,7 @@
 features:
   - id: world-foundation
     title: "Grid and world config foundation (StaticData + stub SimDomain)"
-    status: in-progress
+    status: implemented
     pipeline: lite
   - id: world-generation
     title: "Deterministic terrain noise and clustered resource veins"
