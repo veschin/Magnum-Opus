@@ -79,13 +79,16 @@ Features are units of product scope. Each feature ships one or more modules. Dep
 
 ### Phase 4 - Presentation (locked, taxonomy only)
 
-| ID | Title | Purpose |
-|---|---|---|
-| F18 | `grid-render` | Terrain tile visualization (View). |
-| F19 | `building-render` | Building sprite sync (View). |
-| F20 | `creature-render` | Spritesheet animation (View). |
-| F21 | `ui-panels` | Build menu, inventory, opus panel (View + InputUI). |
-| F22 | `camera-input` | Pan, zoom, cursor-to-grid raycasting (InputUI). |
+Four features total. The pixel-art look comes from `render-pipeline` (post-processing), not from the sprites themselves - 3D-style impostors pass through the pipeline.
+
+| ID | Title | Archetype | Purpose |
+|---|---|---|---|
+| F18 | `render-pipeline` | View | Low-res render target (480×270), Sobel outline, toon shading, posterization, nearest-neighbor upscale. The visual-identity layer; every render feature draws into its target. |
+| F19 | `world-render` | View | Terrain tile quads from `Landscape.cells`, fog overlay from `FogMap`, vein markers from `ResourceVeins`. |
+| F20 | `model-render` | View | Impostor sprites (albedo + normal + depth maps) for buildings, creatures, cargo. Per-pixel lighting read from normal/depth channels. |
+| F21 | `camera-ui` | InputUI + View | Orthographic camera pan/zoom, cursor->grid raycasting, build menu, inventory, opus panel, minimap, tooltips, notifications. Emits `PlaceTile` / `RemoveBuilding` commands. |
+
+**Dependency order:** `render-pipeline` first (owns the target + post-processing), `world-render` and `model-render` in parallel (both draw into the target), `camera-ui` last (UI overlay in screen-space, after upscale). Detailed plan: `~/.claude/plans/render-roadmap.md`.
 
 ### Legacy features (archived - do not extend)
 
