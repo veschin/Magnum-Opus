@@ -584,3 +584,62 @@ Rejected commands are silently dropped. A future error-reporting feature can sur
 - Adding a new `BuildingType` variant without updating the DB table: compile-time exhaustiveness check - the `const` table is a `[(BuildingType, BuildingDef); N]` with explicit variants; missing variants produce a compiler warning at best unless we build the table via `match` on the enum inside the installer. MVP accepts the warning path; can harden later.
 
 ---
+
+<!-- feature:group-formation -->
+### F7: group-formation
+
+**Purpose:** Fold adjacent `Building` entities into shared groups, the sim unit downstream features operate on (manifold, energy allocation, production stats). Each tick, the module walks all Building positions in the grid, runs a flood-fill over 4-connected adjacency, and attaches every member to a freshly-spawned Group entity. This unlocks F6 (one Manifold per group) and F5 (ProductionState advances only when the group is non-empty and energized).
+
+**Problem:** F4 shipped isolated Building entities. The production loop requires a collective notion: five adjacent miners share an ore buffer; disconnected clusters each operate independently. Without the group abstraction, every downstream system would have to re-derive connectivity on its own. F7 centralises that computation inside a single `SimDomain` module in `Phase::Groups`. Behavior is deliberately simple: full recompute each tick. Incremental updates via `BuildingPlaced`/`BuildingRemoved` messages are deferred - MVP chose correctness over throughput.
+
+**Architecture fit:**
+
+1. **`group_formation` module** (`SimDomain`, `PRIMARY_PHASE = Phase::Groups`). Writes `GroupIndex`. Reads `Grid` (occupancy -> tile-entity map is consulted directly). Queries `Building` and `Position` components (no core declaration required - components are Query-only).
+2. **New types:**
+   - `Group` - ZST marker component on each group entity.
+   - `GroupMember { group: Entity }` - component attached to every Building in a group.
+   - `GroupIndex { groups: BTreeSet<Entity>, member_to_group: BTreeMap<Entity, Entity> }` - Resource owned by the module. `groups` lists every group entity currently alive; `member_to_group` answers "which group does this building belong to" in O(log n).
+3. **Algorithm per tick:**
+   1. Despawn every entity carrying `Group` (previous-tick groups).
+   2. Remove `GroupMember` from every Building that has one (previous-tick attachments).
+   3. Collect all Building entities and their positions into a working set.
+   4. Flood-fill via iterative BFS. Neighbor check = cardinal (N/S/E/W). Only tiles that belong to a Building count as adjacent; non-Building Position-only entities are invisible.
+   5. For each connected component, spawn a fresh Group entity and attach `GroupMember { group }` to each member.
+   6. Rebuild `GroupIndex` from the new state.
+
+**Acceptance criteria:**
+
+- AC1: Three Miners placed at `(5, 5)`, `(5, 6)`, `(6, 5)` (L-shape, all cardinal-adjacent) - after two ticks past placement, `GroupIndex.groups.len() == 1` and all three entities have `GroupMember` pointing to the same group entity.
+- AC2: Two disjoint clusters - `(3, 3), (3, 4)` and `(20, 20), (20, 21)` - produce `GroupIndex.groups.len() == 2`. The two GroupMember attachments within each cluster reference the same group; across clusters the groups differ.
+- AC3: An entity spawned with `Position { x: 10, y: 10 }` but without a `Building` component (F3-style untyped placement) contributes nothing to any group; it never receives `GroupMember`. Adjacent Building tiles do not "see" it as a bridge.
+- AC4: Empty grid (no placements) - `GroupIndex.groups.is_empty() == true`, `GroupIndex.member_to_group.is_empty() == true` after any number of ticks.
+- AC5: Single-writer holds: registering a second `SimDomain` that claims `writes: names![GroupIndex]` panics with `"single-writer"`.
+- AC6: Diagonal-only adjacency is NOT treated as adjacency. Two Miners at `(5, 5)` and `(6, 6)` produce two groups, not one.
+- AC7: All 81 pre-F7 tests still pass plus the new AC set.
+
+**Implementation constraints (review-only):**
+
+- `GroupIndex` uses `BTreeSet` and `BTreeMap` (determinism rule - consistent with `Grid.occupancy`).
+- Flood-fill is iterative with an explicit `Vec<(u32, u32)>` stack. Recursion forbidden - arbitrary map sizes could blow the stack.
+- Neighbor enumeration avoids `u32` underflow with `checked_sub(1)` and compares against `grid.width`/`grid.height` for bounds. No `wrapping_add` on coordinate math.
+- The system despawns previous group entities via `Commands::despawn(..)` and removes `GroupMember` via `Commands::entity(e).remove::<GroupMember>()`. Deferred ECS mutation; all observable changes land in the same tick due to `Commands` apply.
+- Full-rebuild semantics mean group entity ids are unstable across ticks. Downstream systems must resolve groups through `GroupIndex.member_to_group` or the `GroupMember` component on a known Building, never by caching a group Entity across ticks.
+
+**Non-goals:**
+
+- Incremental updates on `BuildingPlaced` / `BuildingRemoved`. Performance optimization left for later; MVP prefers correctness.
+- Group-type tagging (Combat group, Mall group, etc.). Relies on a wider tagging scheme that F11 (combat-groups) will introduce.
+- Merge / split events emitted to downstream systems. With full-rebuild semantics every tick, the concept of "split this tick" is moot - the event table applies when incremental mode lands.
+- Non-cardinal adjacency (diagonals, hex layouts).
+- Energy / priority / pause attributes on the group - F8.
+- Per-group statistics like `GroupStats.productionRates` - requires F5 production outputs; this is a read-only view built in a later feature.
+
+**Edge cases:**
+
+- One Building alone at `(0, 0)`: group of size 1. `GroupIndex.groups.len() == 1`, that single entity is its own group.
+- Two Buildings at grid corners, far apart: two separate groups of size 1 each.
+- Building and non-Building tile side-by-side: flood-fill from the Building halts at the non-Building neighbor. The non-Building tile does not receive a GroupMember.
+- Building removed between ticks (future feature): next tick's full rebuild produces the correct group shape without any special handling. F7's algorithm is idempotent over the current world state.
+- Buildings occupying the same tile: impossible by grid invariant - F3 drops duplicates.
+
+---
