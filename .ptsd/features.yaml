@@ -23,3 +23,7 @@ features:
     title: "Click-to-place buildings via CommandBus<PlaceTile> drained by grid module"
     status: planned
     pipeline: lite
+  - id: buildings
+    title: "BuildingDB + Building component + placement extension"
+    status: planned
+    pipeline: lite
