@@ -3,84 +3,103 @@ features:
     stage: prd
     hashes:
       bdd: ac50a20bea4f888ab698a4be6eaff032395fb5142c6eddb2ce7bef308d0d4216
-      prd: 183c5e8217f5a5994febb5cc1a56662b5599991b32857dee7eb790e431b28ed5
+      prd: 7845438799141cc39d9836efa1dcaf41b93cf1d29d7bf85c83fbce270181be78
       seed: bff60b73d4268d59a5765c131f4bc9636a3cbd68cb5b88cbdab4c281aaa31da6
     scores:
   creatures:
     stage: prd
     hashes:
       bdd: 6fffc33b1088310569728752c8409e226be8fa48a327cb7c8ca9f0ec0a43e060
-      prd: 183c5e8217f5a5994febb5cc1a56662b5599991b32857dee7eb790e431b28ed5
+      prd: 7845438799141cc39d9836efa1dcaf41b93cf1d29d7bf85c83fbce270181be78
       seed: e4fcf5e33b213e96a635d6cdb4b43df197faae7cac1c602f2b6bef226b507cae
     scores:
   ecs-engine:
     stage: prd
     hashes:
       bdd: 20022e09d7dbe3721c999fd0302e50b8da8c00ff034cef9fd7a55934e01a130f
-      prd: 183c5e8217f5a5994febb5cc1a56662b5599991b32857dee7eb790e431b28ed5
+      prd: 7845438799141cc39d9836efa1dcaf41b93cf1d29d7bf85c83fbce270181be78
       seed: 4ad3035f81625ae0c37062cf45b18220f868fca4306ad23f4fac08586361cc90
     scores:
   energy:
     stage: prd
     hashes:
       bdd: bb75f0a2a675d0334506df54ecb67c9bab0de7d225a8a3fb2692fdb548f9c23e
-      prd: 183c5e8217f5a5994febb5cc1a56662b5599991b32857dee7eb790e431b28ed5
+      prd: 7845438799141cc39d9836efa1dcaf41b93cf1d29d7bf85c83fbce270181be78
       seed: 80c6a29d15bdbcb00787ee0c0a1eccb4408555618735a562b0e5bc3d50bef9de
     scores:
   game-render:
     stage: prd
     hashes:
       bdd: bb1175c6a821a4d03f165f9a660b23f1bde3f71c601e5683dde73c6ee745a2bb
-      prd: 183c5e8217f5a5994febb5cc1a56662b5599991b32857dee7eb790e431b28ed5
+      prd: 7845438799141cc39d9836efa1dcaf41b93cf1d29d7bf85c83fbce270181be78
       seed: 920e292f91f0627daef38cb94474d22625af860d91ea34651633805f50c05a96
     scores:
   game-startup:
     stage: prd
     hashes:
       bdd: 9deb281bf94cd37a05d5289afe2efcb89368b9ed69365a5d1fe962b256ee67c0
-      prd: 183c5e8217f5a5994febb5cc1a56662b5599991b32857dee7eb790e431b28ed5
+      prd: 7845438799141cc39d9836efa1dcaf41b93cf1d29d7bf85c83fbce270181be78
       seed: 719cd2a32b18f67676b51f13b4a25b229dd1baa8096289598d0bcd880ee0fd7f
     scores:
   game-ui:
     stage: prd
     hashes:
       bdd: df7fc616f3cd3cfa00c5fe3bf0332df1bded3bf41a977c87c78bf07a5ea71d24
-      prd: 183c5e8217f5a5994febb5cc1a56662b5599991b32857dee7eb790e431b28ed5
+      prd: 7845438799141cc39d9836efa1dcaf41b93cf1d29d7bf85c83fbce270181be78
       seed: c78fbff2955c6558162be67c54fdf9473efa9cdebd0d2af55497c21f0bcb0bd2
     scores:
   meta:
     stage: prd
     hashes:
       bdd: ea8724a47b3c6bd859ccae75ff5ed0b0191eabab59998f827928e34b5879a5e5
-      prd: 183c5e8217f5a5994febb5cc1a56662b5599991b32857dee7eb790e431b28ed5
+      prd: 7845438799141cc39d9836efa1dcaf41b93cf1d29d7bf85c83fbce270181be78
       seed: 8b78855903488f70011ff627bff4b71363d79cb6a50408065fb89e0a956527da
     scores:
   progression:
     stage: prd
     hashes:
       bdd: d5c058de93fb45d8401d11546d2e1ab1a25bb621b472b03829b30ec81d5a7330
-      prd: 183c5e8217f5a5994febb5cc1a56662b5599991b32857dee7eb790e431b28ed5
+      prd: 7845438799141cc39d9836efa1dcaf41b93cf1d29d7bf85c83fbce270181be78
       seed: 9eb8147821484a6cd1cfc1d92be1bbc04db476d99567f777174a56bb0a31d775
     scores:
+  render-pipeline:
+    stage: impl
+    hashes:
+      test_results: passed:1 failed:0
+      test_status: passing
+    scores:
+      impl:
+        score: 9
+        at: "2026-04-18T11:36:54.962967826+03:00"
+      prd:
+        score: 8
+        at: "2026-04-18T11:33:07.519549727+03:00"
+      tests:
+        score: 8
+        at: "2026-04-18T11:33:38.347978814+03:00"
+    tests:
+      - feature:render-pipeline::magnum_opus/tests/render_pipeline_config_smoke.rs
+      - feature:render-pipeline::magnum_opus/tests/render_pipeline_config_derives.rs
+      - feature:render-pipeline::magnum_opus/tests/render_pipeline_duplicate_writer_panics.rs
   transport:
     stage: prd
     hashes:
       bdd: 9a5b37fb125db29c35742e69eaaa0ae51396b9ccf231d4a1956da764d53aeb0b
-      prd: 183c5e8217f5a5994febb5cc1a56662b5599991b32857dee7eb790e431b28ed5
+      prd: 7845438799141cc39d9836efa1dcaf41b93cf1d29d7bf85c83fbce270181be78
       seed: 8e5db75c294ce7951569860102b4f61096f0c223f44b9701cafc182124e35312
     scores:
   ux:
     stage: prd
     hashes:
       bdd: 499021a2c1e22a6637917d79058f859e30ad7b4f17afa938dc957fc8aef1b686
-      prd: 183c5e8217f5a5994febb5cc1a56662b5599991b32857dee7eb790e431b28ed5
+      prd: 7845438799141cc39d9836efa1dcaf41b93cf1d29d7bf85c83fbce270181be78
       seed: db2697407ff703c2dee6af434badcd76d163187ab372474f94cccc0b35d4883a
     scores:
   world:
     stage: prd
     hashes:
       bdd: 2551a55f080a45f9687411afc56a159e19f55a7952899512f57bfc36f7201aff
-      prd: 183c5e8217f5a5994febb5cc1a56662b5599991b32857dee7eb790e431b28ed5
+      prd: 7845438799141cc39d9836efa1dcaf41b93cf1d29d7bf85c83fbce270181be78
       seed: 389ca1603942d519de9eded952f00a1c892125b3a8dabcacccce770ba530dc7c
     scores:
   world-foundation:

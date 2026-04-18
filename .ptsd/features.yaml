@@ -7,3 +7,7 @@ features:
     title: "Deterministic terrain noise and clustered resource veins"
     status: implemented
     pipeline: standard
+  - id: render-pipeline
+    title: "Low-res target and post-processing chain (outline, toon, posterize, upscale)"
+    status: implemented
+    pipeline: lite

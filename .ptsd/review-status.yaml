@@ -1,4 +1,9 @@
 features:
+  render-pipeline:
+    stage: impl
+    tests: absent
+    review: passed
+    issues: 0
   world-foundation:
     stage: impl
     tests: absent
