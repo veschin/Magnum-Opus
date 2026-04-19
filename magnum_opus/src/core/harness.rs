@@ -9,7 +9,6 @@ use super::plugin::CorePlugin;
 use super::sim_domain::SimDomain;
 use super::static_data::StaticData;
 use super::view::View;
-use crate::render_pipeline::{PostProcessMaterial, ToonMaterial};
 
 /// Canonical test harness. All module tests go through this.
 ///
@@ -42,8 +41,6 @@ impl Harness {
         app.init_asset::<Mesh>();
         app.init_asset::<StandardMaterial>();
         app.init_asset::<Image>();
-        app.init_asset::<ToonMaterial>();
-        app.init_asset::<PostProcessMaterial>();
         app.add_plugins(CorePlugin);
         Self { app }
     }
