@@ -30,6 +30,15 @@
             "command": "/home/veschin/ai/magnum-opus/.claude/hooks/ptsd-track.sh"
           }
         ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "/home/veschin/ai/magnum-opus/.claude/hooks/cargo-sweep.sh"
+          }
+        ]
       }
     ]
   }
