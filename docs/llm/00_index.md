@@ -20,9 +20,11 @@ Each entry declares `id` and `kind` in front-matter.
   recipe, derived from davidhol.land's 2024 article. Reference frames in
   [refs/3d_pixel_art/](refs/3d_pixel_art/). Recipe only - no render
   feature is owner-approved yet.
-- [40_terrain.md](40_terrain.md) - terrain heightmap and hydrological model.
-  Height system (-5..+5, 0.5-block steps), ocean plane, basin lakes,
-  steepest-descent rivers, shore/depth gradients, column rendering.
+- [40_terrain.md](40_terrain.md) - terrain & water system (v7). Spring-based
+  water, 11 height levels (-2..+3), multi-tile (2×2), ocean columns,
+  river carving, feature fixup, shore/depth gradients.
+- [41_terrain_contracts.md](41_terrain_contracts.md) - terrain generation
+  invariants and design decisions. Validated through 3 critic rounds.
 - [90_lessons.md](90_lessons.md) - v1 post-mortem, rules that must hold in v2.
 
 ## Kinds

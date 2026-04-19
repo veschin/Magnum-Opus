@@ -19,13 +19,16 @@ What exists right now:
   publishes `grid.occupancy_count` gauge. Occupancy stays empty in F1.
 - `magnum_opus/tests/` - 29 tests, all green. Core contract suite + grid +
   world-config smoke.
+- `magnum_opus/examples/grid_prototype.rs` - terrain generation prototype.
+  Multi-tile heightmap (2×2, 64×64), spring-based water, toon shading,
+  outline post-process. Owner-approved visual testbed, not gameplay code.
+  See `docs/llm/40_terrain.md` for the terrain system spec.
 
 What does not exist (and must not be written without an explicit ask):
 
 - Any binary (`src/main.rs`). The crate is lib-only.
-- Rendering, UI, examples. No `bevy_egui`, no pixel-art pipeline, no `examples/`.
-- Landscape, buildings, recipes, manifold, groups, placement command bus,
-  production, transport, fog, creatures, combat, progression, meta-currency.
+- Gameplay modules: buildings, recipes, manifold, groups, placement
+  command bus, production, transport, fog, creatures, combat, progression.
 - Seed/BDD artifacts. `.ptsd/bdd/` and `.ptsd/seeds/` are empty on purpose.
 
 ## Scope guard (READ BEFORE DOING ANYTHING)
@@ -48,9 +51,10 @@ Operating rules:
 ## Build & test
 
 ```
-cd magnum_opus && cargo build          # builds the lib
-cd magnum_opus && cargo test           # 29 tests, all passing
-cd magnum_opus && cargo run            # fails - lib-only crate, no binary
+cd magnum_opus && cargo build                            # lib
+cd magnum_opus && cargo test                             # 29 tests
+cd magnum_opus && cargo run --example grid_prototype     # terrain prototype
+SCREENSHOT=1 cargo run --example grid_prototype          # auto-screenshot to /tmp/
 ```
 
 ## Tech stack
