@@ -32,7 +32,7 @@ use magnum_opus::world_config::WorldConfigModule;
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 // --- Tunables ---
-const CELLS: u32 = 32;                       // visible grid side (cells)
+const CELLS: u32 = 32;
 const CELL_SIZE: f32 = 1.5;                  // world units per cell
 const NODES_PER_REGION: usize = 6;           // resource cluster density
 const REGION_RADIUS: i32 = 5;                // placement jitter around center
@@ -57,6 +57,8 @@ const BASIN_DEPTH_MAX: f32 = 1.5;
 // --- Rivers ---
 const RIVER_SEED: u64 = 0xFADE_DEAD_BEEF_0003;
 const RIVER_MAX: u64 = 3;
+// --- Rendering mode ---
+const TERRAIN_SMOOTH: bool = true;
 
 fn main() {
     let screenshot = std::env::var("SCREENSHOT").as_deref() == Ok("1");
@@ -502,6 +504,7 @@ fn detect_cliffs(heights: &BTreeMap<(i32, i32), f32>) -> BTreeSet<(i32, i32)> {
 
 struct LayoutResult {
     heights: BTreeMap<(i32, i32), f32>,
+    render_heights: BTreeMap<(i32, i32), f32>,
     ocean: BTreeSet<(i32, i32)>,
     lake_cells: BTreeSet<(i32, i32)>,
     water_surfaces: BTreeMap<(i32, i32), f32>,
@@ -735,8 +738,43 @@ fn generate_layout() -> LayoutResult {
     let water_depth = compute_water_depth(&all_water);
     let cliffs = detect_cliffs(&heights);
 
+    // 12. Render heights: smooth (box-filter on raw noise) or stepped (quantized)
+    let render_heights = if TERRAIN_SMOOTH {
+        let mut raw: BTreeMap<(i32, i32), f32> = BTreeMap::new();
+        for gx in 0..max {
+            for gz in 0..max {
+                raw.insert((gx, gz), terrain_height(gx, gz));
+            }
+        }
+        stamp_basins(&mut raw, BASIN_SEED);
+        for h in raw.values_mut() {
+            *h = h.clamp(-5.0, 5.0);
+        }
+        let mut smoothed = raw.clone();
+        for gx in 0..max {
+            for gz in 0..max {
+                if ocean.contains(&(gx, gz)) {
+                    continue;
+                }
+                let mut sum = raw[&(gx, gz)];
+                let mut cnt = 1.0_f32;
+                for (nx, nz) in [(gx + 1, gz), (gx - 1, gz), (gx, gz + 1), (gx, gz - 1)] {
+                    if nx >= 0 && nx < max && nz >= 0 && nz < max && !ocean.contains(&(nx, nz)) {
+                        sum += raw[&(nx, nz)];
+                        cnt += 1.0;
+                    }
+                }
+                smoothed.insert((gx, gz), sum / cnt);
+            }
+        }
+        smoothed
+    } else {
+        heights.clone()
+    };
+
     LayoutResult {
         heights,
+        render_heights,
         ocean,
         lake_cells,
         water_surfaces,
@@ -817,20 +855,14 @@ fn setup_scene(
         Transform::from_xyz(world_extent * 0.5, SEA_LEVEL * CELL_SIZE, world_extent * 0.5),
     ));
 
-    // --- Column meshes (21 height levels) ---
-    let col_meshes: Vec<Handle<Mesh>> = (-10..=10)
-        .map(|i| {
-            let h = i as f32 * 0.5;
-            let col_h = (h - DEPTH_FLOOR) * CELL_SIZE;
-            meshes.add(Cuboid::new(CELL_SIZE, col_h, CELL_SIZE))
-        })
-        .collect();
+    // --- Column mesh (unit cube, scaled per cell) ---
+    let unit_col = meshes.add(Cuboid::new(1.0, 1.0, 1.0));
 
     // --- Tile loop ---
     for gx in 0..max {
         for gz in 0..max {
             if layout.ocean.contains(&(gx, gz)) {
-                continue; // V2: no column for ocean cells
+                continue;
             }
 
             let wx = (gx as f32 + 0.5) * CELL_SIZE;
@@ -840,13 +872,11 @@ fn setup_scene(
             let is_river = layout.river_cells.contains(&(gx, gz));
 
             let h = if is_lake {
-                layout.water_surfaces.get(&(gx, gz)).copied().unwrap_or(0.0) // V3
+                layout.water_surfaces.get(&(gx, gz)).copied().unwrap_or(0.0)
             } else {
-                layout.heights[&(gx, gz)]
+                layout.render_heights[&(gx, gz)]
             };
 
-            let mesh_idx = ((h + 5.0) * 2.0).round() as usize;
-            let mesh_idx = mesh_idx.min(20);
             let col_h = (h - DEPTH_FLOOR) * CELL_SIZE;
             let surface_y = h * CELL_SIZE;
             let center_y = surface_y - col_h / 2.0;
@@ -871,9 +901,10 @@ fn setup_scene(
             };
 
             commands.spawn((
-                Mesh3d(col_meshes[mesh_idx].clone()),
+                Mesh3d(unit_col.clone()),
                 MeshMaterial3d(mat),
-                Transform::from_xyz(wx, center_y, wz),
+                Transform::from_xyz(wx, center_y, wz)
+                    .with_scale(Vec3::new(CELL_SIZE, col_h, CELL_SIZE)),
             ));
         }
     }
@@ -892,7 +923,7 @@ fn setup_scene(
             spawn.origin,
             &TEMPLATES[spawn.template_idx],
             spawn.resource.primitive(),
-            &layout.heights,
+            &layout.render_heights,
         );
     }
 }
