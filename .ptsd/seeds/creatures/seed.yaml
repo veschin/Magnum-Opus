@@ -1,6 +1,0 @@
-feature: creatures
-files:
-  - creature_types.yaml
-  - nests.yaml
-  - combat_production.yaml
-  - fixtures.yaml

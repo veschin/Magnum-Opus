@@ -1,6 +1,0 @@
-feature: meta
-files:
-  - currencies.yaml
-  - unlocks.yaml
-  - trading.yaml
-  - fixtures.yaml

@@ -1,8 +1,0 @@
-feature: game-ui
-files:
-  - camera.yaml
-  - input_actions.yaml
-  - panels.yaml
-  - notifications.yaml
-  - path: seed.yaml
-    type: data

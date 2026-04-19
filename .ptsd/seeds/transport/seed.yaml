@@ -1,5 +1,0 @@
-feature: transport
-files:
-  - path_tiers.yaml
-  - minion_carry.yaml
-  - fixtures.yaml
