@@ -40,27 +40,23 @@ const REGION_OFFSET: f32 = 9.0;              // distance from map center
 const NODE_MARGIN: i32 = 1;                  // empty cells between nodes
 const SPAWN_SEED: u64 = 0xAABB_CCDD_EEFF_0011;
 const MAX_SPAWN_ATTEMPTS: u64 = 400;
-// --- Water: Rivers ---
-const RIVER_SEED: u64 = 0xFADE_DEAD_BEEF_0001;
-const RIVER_MAX: u64 = 2;
-const RIVER_JITTER: f32 = 0.35;
-// --- Water: Lakes ---
-const LAKE_SEED: u64 = 0xCAFE_BABE_FACE_0002;
-const LAKE_COUNT_MIN: u64 = 2;
-const LAKE_COUNT_MAX: u64 = 4;
-const LAKE_CELLS_MIN: u32 = 6;
-const LAKE_CELLS_MAX: u32 = 14;
-const LAKE_INSET: i32 = 3;
-// --- Water: Puddles ---
-const PUDDLE_SEED: u64 = 0xCCCC_DDDD_EEEE_0003;
-const PUDDLE_COUNT_MIN: u64 = 3;
-const PUDDLE_COUNT_MAX: u64 = 6;
-// --- Ground ---
-const GROUND_HEIGHT_JITTER: f32 = 0.05;
-const DEEP_WATER_DEPTH: f32 = 0.40;
-const GROUND_THICKNESS: f32 = 1.0;           // × CELL_SIZE
-const WATER_DEPTH: f32 = 0.25;               // × CELL_SIZE below ground top
-const WATER_THICKNESS: f32 = 0.35;           // × CELL_SIZE
+// --- Terrain ---
+const TERRAIN_SEED: u64 = 0xABCD_EF01_2345_6789;
+const SEA_LEVEL: f32 = 0.0;
+const EDGE_MARGIN: i32 = 2;
+const EDGE_SINK: f32 = 3.0;
+const DEPTH_FLOOR: f32 = -6.0;
+// --- Basins ---
+const BASIN_SEED: u64 = 0xBA51_CAFE_BABE_0002;
+const BASIN_COUNT_MIN: u64 = 2;
+const BASIN_COUNT_MAX: u64 = 4;
+const BASIN_RADIUS_MIN: i32 = 2;
+const BASIN_RADIUS_MAX: i32 = 4;
+const BASIN_DEPTH_MIN: f32 = 1.0;
+const BASIN_DEPTH_MAX: f32 = 1.5;
+// --- Rivers ---
+const RIVER_SEED: u64 = 0xFADE_DEAD_BEEF_0003;
+const RIVER_MAX: u64 = 3;
 
 fn main() {
     let screenshot = std::env::var("SCREENSHOT").as_deref() == Ok("1");
@@ -185,8 +181,7 @@ fn hash64(mut x: u64) -> u64 {
     x ^ (x >> 33)
 }
 
-fn smooth_height(gx: i32, gz: i32) -> f32 {
-    let scale = 8.0_f32;
+fn noise_octave(gx: i32, gz: i32, scale: f32, seed: u64) -> f32 {
     let fx = gx as f32 / scale;
     let fz = gz as f32 / scale;
     let ix = fx.floor() as i64;
@@ -196,11 +191,7 @@ fn smooth_height(gx: i32, gz: i32) -> f32 {
     tx = tx * tx * (3.0 - 2.0 * tx);
     tz = tz * tz * (3.0 - 2.0 * tz);
     let corner = |cx: i64, cz: i64| -> f32 {
-        let h = hash64(
-            0xABCD_EF01_2345_6789_u64
-                .wrapping_add(cx as u64 * 7919)
-                .wrapping_add(cz as u64 * 6271),
-        );
+        let h = hash64(seed.wrapping_add(cx as u64 * 7919).wrapping_add(cz as u64 * 6271));
         (h % 1000) as f32 / 500.0 - 1.0
     };
     let h00 = corner(ix, iz);
@@ -212,18 +203,313 @@ fn smooth_height(gx: i32, gz: i32) -> f32 {
     h0 + (h1 - h0) * tz
 }
 
-// --- Water types ---
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum WaterType {
-    River,
-    Lake,
-    Puddle,
+fn terrain_height(gx: i32, gz: i32) -> f32 {
+    let n1 = noise_octave(gx, gz, 16.0, TERRAIN_SEED) * 3.0;
+    let n2 = noise_octave(gx, gz, 6.0, TERRAIN_SEED ^ 0xFF01) * 1.5;
+    let n3 = noise_octave(gx, gz, 3.0, TERRAIN_SEED ^ 0xFF02) * 0.5;
+    let raw = n1 + n2 + n3 + 3.0;
+    let max = CELLS as i32 - 1;
+    let dist = gx.min(max - gx).min(gz.min(max - gz)) as f32;
+    let falloff = (dist / EDGE_MARGIN as f32).min(1.0);
+    raw * falloff - EDGE_SINK * (1.0 - falloff)
 }
 
-struct WaterCell {
-    pos: (i32, i32),
-    water_type: WaterType,
+fn stamp_basins(heights: &mut BTreeMap<(i32, i32), f32>, seed: u64) {
+    let s0 = hash64(seed);
+    let count = BASIN_COUNT_MIN + hash64(s0 ^ 0x01) % (BASIN_COUNT_MAX - BASIN_COUNT_MIN + 1);
+    let max = CELLS as i32;
+    let inset = 4;
+    let range = max - 2 * inset;
+    if range <= 0 {
+        return;
+    }
+    for i in 0..count {
+        let s = hash64(seed.wrapping_add(i));
+        let cx = (hash64(s ^ 0x11) as i32).rem_euclid(range) + inset;
+        let cz = (hash64(s ^ 0x22) as i32).rem_euclid(range) + inset;
+        let radius =
+            BASIN_RADIUS_MIN + (hash64(s ^ 0x33) as i32).rem_euclid(BASIN_RADIUS_MAX - BASIN_RADIUS_MIN + 1);
+        let depth = BASIN_DEPTH_MIN
+            + (hash64(s ^ 0x44) % 100) as f32 / 100.0 * (BASIN_DEPTH_MAX - BASIN_DEPTH_MIN);
+        let rf = radius as f32;
+        for gx in (cx - radius)..=(cx + radius) {
+            for gz in (cz - radius)..=(cz + radius) {
+                if gx < 0 || gx >= max || gz < 0 || gz >= max {
+                    continue;
+                }
+                let d = ((gx - cx) as f32).hypot((gz - cz) as f32);
+                if d <= rf {
+                    if let Some(h) = heights.get_mut(&(gx, gz)) {
+                        *h -= depth * (1.0 - d / rf);
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn compute_ocean(heights: &BTreeMap<(i32, i32), f32>) -> BTreeSet<(i32, i32)> {
+    let max = CELLS as i32;
+    let mut ocean = BTreeSet::new();
+    for gx in 0..max {
+        for gz in 0..max {
+            let dist = gx.min(max - 1 - gx).min(gz.min(max - 1 - gz));
+            if dist < EDGE_MARGIN {
+                if heights.get(&(gx, gz)).copied().unwrap_or(0.0) < SEA_LEVEL {
+                    ocean.insert((gx, gz));
+                }
+            }
+        }
+    }
+    ocean
+}
+
+struct Basin {
+    cells: BTreeSet<(i32, i32)>,
+    water_surface: f32,
+    pour_point: (i32, i32),
+}
+
+fn find_basins(heights: &BTreeMap<(i32, i32), f32>, ocean: &BTreeSet<(i32, i32)>) -> Vec<Basin> {
+    let max = CELLS as i32;
+    let mut basins = Vec::new();
+    let mut lake_claimed: BTreeSet<(i32, i32)> = BTreeSet::new();
+
+    let mut minima: Vec<(i32, i32)> = Vec::new();
+    for gx in 0..max {
+        for gz in 0..max {
+            let cell = (gx, gz);
+            if ocean.contains(&cell) || lake_claimed.contains(&cell) {
+                continue;
+            }
+            let h = heights[&cell];
+            let is_min = [(gx + 1, gz), (gx - 1, gz), (gx, gz + 1), (gx, gz - 1)]
+                .iter()
+                .all(|&(nx, nz)| {
+                    if nx < 0 || nx >= max || nz < 0 || nz >= max {
+                        return true;
+                    }
+                    if ocean.contains(&(nx, nz)) {
+                        return true;
+                    }
+                    heights[&(nx, nz)] >= h
+                });
+            if is_min {
+                minima.push(cell);
+            }
+        }
+    }
+    minima.sort_by(|a, b| heights[a].partial_cmp(&heights[b]).unwrap());
+
+    for &min_cell in &minima {
+        if lake_claimed.contains(&min_cell) || ocean.contains(&min_cell) {
+            continue;
+        }
+        let mut basin = BTreeSet::new();
+        let mut frontier: Vec<(i32, i32)> = vec![min_cell];
+        let mut pour_point = min_cell;
+        let mut water_surface = f32::MAX;
+
+        while !frontier.is_empty() {
+            frontier.sort_by(|a, b| heights[a].partial_cmp(&heights[b]).unwrap());
+            let cell = frontier.remove(0);
+            if basin.contains(&cell) || ocean.contains(&cell) || lake_claimed.contains(&cell) {
+                continue;
+            }
+            let h = heights[&cell];
+            let borders_outside = [(cell.0 + 1, cell.1), (cell.0 - 1, cell.1), (cell.0, cell.1 + 1), (cell.0, cell.1 - 1)]
+                .iter()
+                .any(|&(nx, nz)| {
+                    nx < 0 || nx >= max || nz < 0 || nz >= max || ocean.contains(&(nx, nz))
+                });
+            if borders_outside && h > heights[&min_cell] {
+                pour_point = cell;
+                water_surface = h;
+                break;
+            }
+            basin.insert(cell);
+            for (nx, nz) in [(cell.0 + 1, cell.1), (cell.0 - 1, cell.1), (cell.0, cell.1 + 1), (cell.0, cell.1 - 1)] {
+                if nx < 0 || nx >= max || nz < 0 || nz >= max {
+                    continue;
+                }
+                let n = (nx, nz);
+                if !basin.contains(&n) && !ocean.contains(&n) && !lake_claimed.contains(&n) {
+                    frontier.push(n);
+                }
+            }
+        }
+        if water_surface == f32::MAX {
+            continue;
+        }
+        let lake_cells: BTreeSet<(i32, i32)> = basin
+            .iter()
+            .filter(|&&c| heights[&c] < water_surface)
+            .copied()
+            .collect();
+        let depth = water_surface - heights[&min_cell];
+        if lake_cells.len() >= 2 && depth >= 1.0 {
+            for &c in &lake_cells {
+                lake_claimed.insert(c);
+            }
+            basins.push(Basin { cells: lake_cells, water_surface, pour_point });
+        }
+    }
+    basins
+}
+
+fn trace_rivers(
+    heights: &BTreeMap<(i32, i32), f32>,
+    basins: &[Basin],
+    ocean: &BTreeSet<(i32, i32)>,
+    lake_set: &BTreeSet<(i32, i32)>,
+) -> BTreeSet<(i32, i32)> {
+    let max = CELLS as i32;
+    let mut river = BTreeSet::new();
+    for (bi, basin) in basins.iter().enumerate().take(RIVER_MAX as usize) {
+        let mut current = basin.pour_point;
+        let mut prev = *basin.cells.iter().next().unwrap_or(&current);
+        let mut visited = BTreeSet::new();
+        let width: i32 = if (hash64(RIVER_SEED.wrapping_add(bi as u64)) & 1) == 0 { 1 } else { 2 };
+
+        loop {
+            if ocean.contains(&current) || river.contains(&current) {
+                break;
+            }
+            if lake_set.contains(&current) && !basin.cells.contains(&current) {
+                break;
+            }
+            if visited.contains(&current) {
+                break;
+            }
+            visited.insert(current);
+            river.insert(current);
+            if width == 2 {
+                let fdx = current.0 - prev.0;
+                let fdz = current.1 - prev.1;
+                let extra = (current.0 - fdz, current.1 + fdx);
+                if extra.0 >= 0 && extra.0 < max && extra.1 >= 0 && extra.1 < max
+                    && !ocean.contains(&extra) && !lake_set.contains(&extra)
+                {
+                    river.insert(extra);
+                }
+            }
+            prev = current;
+            let neighbors = [(current.0 + 1, current.1), (current.0 - 1, current.1),
+                             (current.0, current.1 + 1), (current.0, current.1 - 1)];
+            let next = neighbors
+                .iter()
+                .filter(|&&(nx, nz)| nx >= 0 && nx < max && nz >= 0 && nz < max && !visited.contains(&(nx, nz)))
+                .min_by(|&&a, &&b| {
+                    let ha = heights[&a];
+                    let hb = heights[&b];
+                    match ha.partial_cmp(&hb).unwrap() {
+                        std::cmp::Ordering::Equal => {
+                            let da = a.0.min(max - 1 - a.0).min(a.1.min(max - 1 - a.1));
+                            let db = b.0.min(max - 1 - b.0).min(b.1.min(max - 1 - b.1));
+                            da.cmp(&db)
+                        }
+                        ord => ord,
+                    }
+                });
+            match next {
+                Some(&n) if heights[&n] <= heights[&current] => current = n,
+                _ => break,
+            }
+        }
+    }
+    river
+}
+
+fn compute_shore_distance(all_water: &BTreeSet<(i32, i32)>) -> BTreeMap<(i32, i32), u8> {
+    let max = CELLS as i32;
+    let mut dist: BTreeMap<(i32, i32), u8> = BTreeMap::new();
+    let mut queue = VecDeque::new();
+    for &(gx, gz) in all_water {
+        for (nx, nz) in [(gx + 1, gz), (gx - 1, gz), (gx, gz + 1), (gx, gz - 1)] {
+            if nx >= 0 && nx < max && nz >= 0 && nz < max
+                && !all_water.contains(&(nx, nz)) && !dist.contains_key(&(nx, nz))
+            {
+                dist.insert((nx, nz), 1);
+                queue.push_back((nx, nz));
+            }
+        }
+    }
+    while let Some((x, z)) = queue.pop_front() {
+        let d = dist[&(x, z)];
+        if d >= 4 { continue; }
+        for (nx, nz) in [(x + 1, z), (x - 1, z), (x, z + 1), (x, z - 1)] {
+            if nx >= 0 && nx < max && nz >= 0 && nz < max
+                && !all_water.contains(&(nx, nz)) && !dist.contains_key(&(nx, nz))
+            {
+                dist.insert((nx, nz), d + 1);
+                queue.push_back((nx, nz));
+            }
+        }
+    }
+    dist
+}
+
+fn compute_water_depth(all_water: &BTreeSet<(i32, i32)>) -> BTreeMap<(i32, i32), u8> {
+    let max = CELLS as i32;
+    let mut dist: BTreeMap<(i32, i32), u8> = BTreeMap::new();
+    let mut queue = VecDeque::new();
+    for &(gx, gz) in all_water {
+        let on_edge = [(gx + 1, gz), (gx - 1, gz), (gx, gz + 1), (gx, gz - 1)]
+            .iter()
+            .any(|&(nx, nz)| {
+                nx < 0 || nx >= max || nz < 0 || nz >= max || !all_water.contains(&(nx, nz))
+            });
+        if on_edge {
+            dist.insert((gx, gz), 1);
+            queue.push_back((gx, gz));
+        }
+    }
+    while let Some((x, z)) = queue.pop_front() {
+        let d = dist[&(x, z)];
+        if d >= 4 { continue; }
+        for (nx, nz) in [(x + 1, z), (x - 1, z), (x, z + 1), (x, z - 1)] {
+            if nx >= 0 && nx < max && nz >= 0 && nz < max
+                && all_water.contains(&(nx, nz)) && !dist.contains_key(&(nx, nz))
+            {
+                dist.insert((nx, nz), d + 1);
+                queue.push_back((nx, nz));
+            }
+        }
+    }
+    dist
+}
+
+fn detect_cliffs(heights: &BTreeMap<(i32, i32), f32>) -> BTreeSet<(i32, i32)> {
+    let max = CELLS as i32;
+    let mut cliffs = BTreeSet::new();
+    for gx in 0..max {
+        for gz in 0..max {
+            let h = heights[&(gx, gz)];
+            let max_diff = [(gx + 1, gz), (gx - 1, gz), (gx, gz + 1), (gx, gz - 1)]
+                .iter()
+                .filter_map(|&(nx, nz)| {
+                    if nx < 0 || nx >= max || nz < 0 || nz >= max { return None; }
+                    Some((heights[&(nx, nz)] - h).abs())
+                })
+                .fold(0.0_f32, f32::max);
+            if max_diff > 1.0 {
+                cliffs.insert((gx, gz));
+            }
+        }
+    }
+    cliffs
+}
+
+struct LayoutResult {
+    heights: BTreeMap<(i32, i32), f32>,
+    ocean: BTreeSet<(i32, i32)>,
+    lake_cells: BTreeSet<(i32, i32)>,
+    water_surfaces: BTreeMap<(i32, i32), f32>,
+    river_cells: BTreeSet<(i32, i32)>,
+    nodes: Vec<NodeSpawn>,
+    shore_dist: BTreeMap<(i32, i32), u8>,
+    water_depth: BTreeMap<(i32, i32), u8>,
+    cliffs: BTreeSet<(i32, i32)>,
 }
 
 // --- Resources ---
@@ -284,6 +570,7 @@ fn spawn_node(
     origin: IVec2,
     template: &NodeTemplate,
     prim: Prim,
+    heights: &BTreeMap<(i32, i32), f32>,
 ) {
     let mesh = meshes.add(prim.mesh());
     let base_y = prim.half_height();
@@ -296,144 +583,91 @@ fn spawn_node(
                 .wrapping_add(dy as u64 * 7),
         );
         let scale = 0.8 + (h % 401) as f32 / 1000.0;
+        let terrain_y = heights
+            .get(&(origin.x + dx, origin.y + dy))
+            .copied()
+            .unwrap_or(0.0)
+            * CELL_SIZE;
         let x = ((origin.x + dx) as f32 + 0.5) * CELL_SIZE;
         let z = ((origin.y + dy) as f32 + 0.5) * CELL_SIZE;
         commands.spawn((
             Mesh3d(mesh.clone()),
             MeshMaterial3d(material.clone()),
-            Transform::from_xyz(x, base_y * scale, z).with_scale(Vec3::new(1.0, scale, 1.0)),
+            Transform::from_xyz(x, terrain_y + base_y * scale, z)
+                .with_scale(Vec3::new(1.0, scale, 1.0)),
         ));
     }
 }
 
-fn generate_rivers(placed: &BTreeSet<(i32, i32)>, seed: u64, count: u64) -> Vec<WaterCell> {
-    let mut cells = Vec::new();
+
+fn generate_layout() -> LayoutResult {
     let max = CELLS as i32;
 
-    for i in 0..count {
-        let s = hash64(seed.wrapping_add(i));
-        let vertical = (hash64(s ^ 0xE0) & 1) == 0;
-        let mut pos = (hash64(s ^ 0xE1) as i32).rem_euclid(max);
-        let mut step_s = s;
-
-        for advance in 0..max {
-            let (cx, cy) = if vertical { (pos, advance) } else { (advance, pos) };
-            if cx < 0 || cx >= max || cy < 0 || cy >= max {
-                break;
-            }
-            if placed.contains(&(cx, cy)) {
-                step_s = hash64(step_s ^ 0xDD);
-                let dir: i32 = if (step_s & 1) == 0 { -1 } else { 1 };
-                for d in [dir, -dir] {
-                    let np = pos + d;
-                    let (nx, ny) = if vertical { (np, advance) } else { (advance, np) };
-                    if np >= 0 && np < max && !placed.contains(&(nx, ny)) {
-                        pos = np;
-                        cells.push(WaterCell { pos: (nx, ny), water_type: WaterType::River });
-                        break;
-                    }
-                }
-                continue;
-            }
-            cells.push(WaterCell { pos: (cx, cy), water_type: WaterType::River });
-            step_s = hash64(step_s.wrapping_add(1));
-            if (step_s % 100) as f32 / 100.0 < RIVER_JITTER {
-                let dir: i32 = if (hash64(step_s ^ 0xBB) & 1) == 0 { -1 } else { 1 };
-                pos = (pos + dir).clamp(1, max - 2);
-            }
+    // 1. Heightmap
+    let mut heights: BTreeMap<(i32, i32), f32> = BTreeMap::new();
+    for gx in 0..max {
+        for gz in 0..max {
+            heights.insert((gx, gz), terrain_height(gx, gz));
         }
     }
-    cells
-}
 
-fn generate_lakes(
-    taken: &mut BTreeSet<(i32, i32)>,
-    seed: u64,
-    count: u64,
-) -> Vec<WaterCell> {
-    let mut cells = Vec::new();
-    let max = CELLS as i32;
+    // 2. Basin stamp
+    stamp_basins(&mut heights, BASIN_SEED);
 
-    for i in 0..count {
-        let s = hash64(seed.wrapping_add(i));
-        let inset = LAKE_INSET;
-        let range = max - 2 * inset;
-        if range <= 0 {
-            continue;
-        }
-        let sx = (hash64(s ^ 0x11) as i32).rem_euclid(range) + inset;
-        let sy = (hash64(s ^ 0x22) as i32).rem_euclid(range) + inset;
-        if taken.contains(&(sx, sy)) {
-            continue;
-        }
-        let target =
-            LAKE_CELLS_MIN + hash64(s ^ 0x33) as u32 % (LAKE_CELLS_MAX - LAKE_CELLS_MIN + 1);
-        let mut frontier: Vec<(i32, i32)> = vec![(sx, sy)];
-        let mut lake: Vec<(i32, i32)> = Vec::new();
+    // 3. Clamp + quantize
+    for h in heights.values_mut() {
+        *h = (h.clamp(-5.0, 5.0) * 2.0).round() / 2.0;
+    }
 
-        while lake.len() < target as usize && !frontier.is_empty() {
-            frontier.sort_by_key(|&(x, y)| (x - sx).abs() + (y - sy).abs());
-            let cell = frontier.remove(0);
-            if taken.contains(&cell) {
-                continue;
-            }
-            let (x, y) = cell;
-            if x < 1 || x >= max - 1 || y < 1 || y >= max - 1 {
-                continue;
-            }
-            taken.insert(cell);
-            lake.push(cell);
-            for n in [(x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)] {
-                if !taken.contains(&n) {
-                    frontier.push(n);
-                }
-            }
-        }
+    // 4. Ocean flood BFS
+    let ocean = compute_ocean(&heights);
 
-        for p in lake {
-            cells.push(WaterCell { pos: p, water_type: WaterType::Lake });
+    // 5. Lakes (pour-point basin detection)
+    let basins = find_basins(&heights, &ocean);
+    let mut lake_cells: BTreeSet<(i32, i32)> = BTreeSet::new();
+    let mut water_surfaces: BTreeMap<(i32, i32), f32> = BTreeMap::new();
+    for basin in &basins {
+        for &c in &basin.cells {
+            lake_cells.insert(c);
+            water_surfaces.insert(c, basin.water_surface);
         }
     }
-    cells
-}
 
-fn generate_puddles(
-    taken: &mut BTreeSet<(i32, i32)>,
-    seed: u64,
-    count: u64,
-) -> Vec<WaterCell> {
-    let mut cells = Vec::new();
-    let max = CELLS as i32;
+    // 6. Rivers (steepest descent from pour points)
+    let river_cells = trace_rivers(&heights, &basins, &ocean, &lake_cells);
 
-    for i in 0..count {
-        let s = hash64(seed.wrapping_add(i));
-        let sx = (hash64(s ^ 0x11) as i32).rem_euclid(max);
-        let sy = (hash64(s ^ 0x22) as i32).rem_euclid(max);
-        if taken.contains(&(sx, sy)) {
-            continue;
-        }
-        taken.insert((sx, sy));
-        cells.push(WaterCell { pos: (sx, sy), water_type: WaterType::Puddle });
-
-        if (hash64(s ^ 0x33) & 1) == 1 {
-            let neighbors = [(sx + 1, sy), (sx - 1, sy), (sx, sy + 1), (sx, sy - 1)];
-            let pick = (hash64(s ^ 0x44) as usize) % 4;
-            let n = neighbors[pick];
-            if n.0 >= 0 && n.0 < max && n.1 >= 0 && n.1 < max && !taken.contains(&n) {
-                taken.insert(n);
-                cells.push(WaterCell { pos: n, water_type: WaterType::Puddle });
-            }
-        }
+    // 7. All water
+    let mut all_water: BTreeSet<(i32, i32)> = ocean.clone();
+    for &c in &lake_cells {
+        all_water.insert(c);
     }
-    cells
-}
+    for &c in &river_cells {
+        all_water.insert(c);
+    }
 
-// Deterministic layout: resource nodes per-region, then typed water bodies.
-fn generate_layout() -> (Vec<NodeSpawn>, Vec<WaterCell>) {
+    // 8. Resource nodes (on dry, flat terrain)
     let mut placed: BTreeSet<(i32, i32)> = BTreeSet::new();
     let mut nodes: Vec<NodeSpawn> = Vec::new();
 
     for (region_idx, (center, resource)) in region_centers().iter().enumerate() {
+        let mut actual_center = *center;
+        if all_water.contains(&(actual_center.x, actual_center.y)) {
+            let mut best = actual_center;
+            let mut best_dist = i32::MAX;
+            for gx in 0..max {
+                for gz in 0..max {
+                    if !all_water.contains(&(gx, gz)) {
+                        let d = (gx - center.x).abs() + (gz - center.y).abs();
+                        if d < best_dist {
+                            best_dist = d;
+                            best = IVec2::new(gx, gz);
+                        }
+                    }
+                }
+            }
+            actual_center = best;
+        }
+
         let mut region_count = 0;
         let jitter = REGION_RADIUS * 2 + 1;
         for attempt in 0..MAX_SPAWN_ATTEMPTS {
@@ -456,13 +690,22 @@ fn generate_layout() -> (Vec<NodeSpawn>, Vec<WaterCell>) {
 
             let ox_off = (hash64(s ^ 0xA1) as i32).rem_euclid(jitter) - REGION_RADIUS;
             let oy_off = (hash64(s ^ 0xB2) as i32).rem_euclid(jitter) - REGION_RADIUS;
-            let ox = (center.x + ox_off).clamp(0, CELLS as i32 - max_dx - 1);
-            let oy = (center.y + oy_off).clamp(0, CELLS as i32 - max_dy - 1);
+            let ox = (actual_center.x + ox_off).clamp(0, max - max_dx - 1);
+            let oy = (actual_center.y + oy_off).clamp(0, max - max_dy - 1);
 
+            let h0 = heights[&(ox, oy)];
             let mut fits = true;
             'check: for &(dx, dy) in template.cells {
                 let cx = ox + dx;
                 let cy = oy + dy;
+                if all_water.contains(&(cx, cy)) {
+                    fits = false;
+                    break;
+                }
+                if (heights[&(cx, cy)] - h0).abs() > 0.5 {
+                    fits = false;
+                    break;
+                }
                 for mx in -NODE_MARGIN..=NODE_MARGIN {
                     for my in -NODE_MARGIN..=NODE_MARGIN {
                         if placed.contains(&(cx + mx, cy + my)) {
@@ -487,67 +730,22 @@ fn generate_layout() -> (Vec<NodeSpawn>, Vec<WaterCell>) {
         }
     }
 
-    let mut taken = placed.clone();
-    let mut water: Vec<WaterCell> = Vec::new();
+    // 9-11. Gradients + cliffs
+    let shore_dist = compute_shore_distance(&all_water);
+    let water_depth = compute_water_depth(&all_water);
+    let cliffs = detect_cliffs(&heights);
 
-    let s0 = hash64(RIVER_SEED);
-    let river_count = hash64(s0 ^ 0x01) % (RIVER_MAX + 1);
-    let river_cells = generate_rivers(&placed, RIVER_SEED, river_count);
-    for c in &river_cells {
-        taken.insert(c.pos);
+    LayoutResult {
+        heights,
+        ocean,
+        lake_cells,
+        water_surfaces,
+        river_cells,
+        nodes,
+        shore_dist,
+        water_depth,
+        cliffs,
     }
-    water.extend(river_cells);
-
-    let s1 = hash64(LAKE_SEED);
-    let lake_count =
-        LAKE_COUNT_MIN + hash64(s1 ^ 0x01) % (LAKE_COUNT_MAX - LAKE_COUNT_MIN + 1);
-    water.extend(generate_lakes(&mut taken, LAKE_SEED, lake_count));
-
-    let s2 = hash64(PUDDLE_SEED);
-    let puddle_count =
-        PUDDLE_COUNT_MIN + hash64(s2 ^ 0x01) % (PUDDLE_COUNT_MAX - PUDDLE_COUNT_MIN + 1);
-    water.extend(generate_puddles(&mut taken, PUDDLE_SEED, puddle_count));
-
-    // CA smoothing: one Moore-neighbourhood pass.
-    let water_set: BTreeSet<(i32, i32)> = water.iter().map(|w| w.pos).collect();
-    let remove: BTreeSet<(i32, i32)> = water
-        .iter()
-        .filter(|wc| wc.water_type != WaterType::Puddle)
-        .filter(|wc| {
-            let (x, y) = wc.pos;
-            let mut cnt = 0u32;
-            for dx in -1..=1_i32 {
-                for dy in -1..=1_i32 {
-                    if dx == 0 && dy == 0 { continue; }
-                    if water_set.contains(&(x + dx, y + dy)) { cnt += 1; }
-                }
-            }
-            cnt <= 1
-        })
-        .map(|wc| wc.pos)
-        .collect();
-    water.retain(|wc| !remove.contains(&wc.pos));
-
-    let water_set2: BTreeSet<(i32, i32)> = water.iter().map(|w| w.pos).collect();
-    for gx in 0..CELLS as i32 {
-        for gy in 0..CELLS as i32 {
-            if water_set2.contains(&(gx, gy)) || placed.contains(&(gx, gy)) {
-                continue;
-            }
-            let mut cnt = 0u32;
-            for dx in -1..=1_i32 {
-                for dy in -1..=1_i32 {
-                    if dx == 0 && dy == 0 { continue; }
-                    if water_set2.contains(&(gx + dx, gy + dy)) { cnt += 1; }
-                }
-            }
-            if cnt >= 5 {
-                water.push(WaterCell { pos: (gx, gy), water_type: WaterType::Lake });
-            }
-        }
-    }
-
-    (nodes, water)
 }
 
 fn setup_scene(
@@ -556,15 +754,24 @@ fn setup_scene(
     mut toon: ResMut<Assets<ToonMaterial>>,
 ) {
     let cells = CELLS as f32;
+    let max = CELLS as i32;
     let world_extent = cells * CELL_SIZE;
-    let centre = Vec3::new(world_extent * 0.5, 0.0, world_extent * 0.5);
+
+    let layout = generate_layout();
+
+    let avg_h: f32 = if layout.heights.is_empty() {
+        0.0
+    } else {
+        layout.heights.values().sum::<f32>() / layout.heights.len() as f32
+    };
+    let centre = Vec3::new(world_extent * 0.5, avg_h * CELL_SIZE, world_extent * 0.5);
 
     commands.spawn((
         Camera3d::default(),
         Tonemapping::None,
         Projection::Orthographic(OrthographicProjection {
             scaling_mode: bevy::camera::ScalingMode::FixedVertical {
-                viewport_height: world_extent * 1.4,
+                viewport_height: world_extent * 1.6,
             },
             near: -500.0,
             far: 500.0,
@@ -587,106 +794,92 @@ fn setup_scene(
         Transform::from_xyz(centre.x + 40.0, 100.0, centre.z + 30.0).looking_at(centre, Vec3::Y),
     ));
 
-    let ground_mat = toon.add(ToonMaterial {
-        base_color: LinearRgba::rgb(0.34, 0.62, 0.28),
-    });
-    let water_mat = toon.add(ToonMaterial {
-        base_color: LinearRgba::rgb(0.30, 0.62, 0.88),
-    });
-    let shore_mat = toon.add(ToonMaterial {
-        base_color: LinearRgba::rgb(0.28, 0.50, 0.24),
-    });
-    let deep_water_mat = toon.add(ToonMaterial {
-        base_color: LinearRgba::rgb(0.22, 0.52, 0.78),
-    });
-    let copper_mat = toon.add(ToonMaterial {
-        base_color: Resource::Copper.color(),
-    });
-    let metal_mat = toon.add(ToonMaterial {
-        base_color: Resource::Metal.color(),
-    });
-    let coal_mat = toon.add(ToonMaterial {
-        base_color: Resource::Coal.color(),
-    });
+    // --- Materials ---
+    let grass_mat = toon.add(ToonMaterial { base_color: LinearRgba::rgb(0.34, 0.62, 0.28) });
+    let shore3_mat = toon.add(ToonMaterial { base_color: LinearRgba::rgb(0.32, 0.59, 0.27) });
+    let shore2_mat = toon.add(ToonMaterial { base_color: LinearRgba::rgb(0.30, 0.56, 0.25) });
+    let shore1_mat = toon.add(ToonMaterial { base_color: LinearRgba::rgb(0.28, 0.52, 0.24) });
+    let cliff_mat = toon.add(ToonMaterial { base_color: LinearRgba::rgb(0.45, 0.38, 0.30) });
+    let shallow_mat = toon.add(ToonMaterial { base_color: LinearRgba::rgb(0.35, 0.68, 0.90) });
+    let medium_mat = toon.add(ToonMaterial { base_color: LinearRgba::rgb(0.28, 0.60, 0.85) });
+    let deep_mat = toon.add(ToonMaterial { base_color: LinearRgba::rgb(0.22, 0.52, 0.78) });
+    let ocean_mat = toon.add(ToonMaterial { base_color: LinearRgba::rgb(0.12, 0.38, 0.62) });
+    let copper_mat = toon.add(ToonMaterial { base_color: Resource::Copper.color() });
+    let metal_mat = toon.add(ToonMaterial { base_color: Resource::Metal.color() });
+    let coal_mat = toon.add(ToonMaterial { base_color: Resource::Coal.color() });
 
-    let (node_spawns, water_cells) = generate_layout();
-    let water_map: std::collections::BTreeMap<(i32, i32), WaterType> = water_cells
-        .iter()
-        .map(|wc| (wc.pos, wc.water_type))
-        .collect();
+    // --- Ocean plane ---
+    let ocean_extent = world_extent * 3.0;
+    let ocean_mesh = meshes.add(Cuboid::new(ocean_extent, 0.3 * CELL_SIZE, ocean_extent));
+    commands.spawn((
+        Mesh3d(ocean_mesh),
+        MeshMaterial3d(ocean_mat.clone()),
+        Transform::from_xyz(world_extent * 0.5, SEA_LEVEL * CELL_SIZE, world_extent * 0.5),
+    ));
 
-    let mut shore_set: BTreeSet<(i32, i32)> = BTreeSet::new();
-    for gx in 0..CELLS as i32 {
-        for gz in 0..CELLS as i32 {
-            if water_map.contains_key(&(gx, gz)) {
-                continue;
-            }
-            let adj = [(gx + 1, gz), (gx - 1, gz), (gx, gz + 1), (gx, gz - 1)];
-            if adj.iter().any(|n| water_map.contains_key(n)) {
-                shore_set.insert((gx, gz));
-            }
-        }
-    }
-
-    let deep_set: BTreeSet<(i32, i32)> = water_cells
-        .iter()
-        .filter(|wc| wc.water_type == WaterType::Lake)
-        .filter(|wc| {
-            let (x, y) = wc.pos;
-            [(x + 1, y), (x - 1, y), (x, y + 1), (x, y - 1)]
-                .iter()
-                .all(|n| water_map.contains_key(n))
+    // --- Column meshes (21 height levels) ---
+    let col_meshes: Vec<Handle<Mesh>> = (-10..=10)
+        .map(|i| {
+            let h = i as f32 * 0.5;
+            let col_h = (h - DEPTH_FLOOR) * CELL_SIZE;
+            meshes.add(Cuboid::new(CELL_SIZE, col_h, CELL_SIZE))
         })
-        .map(|wc| wc.pos)
         .collect();
 
-    let ground_mesh = meshes.add(Cuboid::new(
-        CELL_SIZE,
-        GROUND_THICKNESS * CELL_SIZE,
-        CELL_SIZE,
-    ));
-    let water_mesh = meshes.add(Cuboid::new(
-        CELL_SIZE,
-        WATER_THICKNESS * CELL_SIZE,
-        CELL_SIZE,
-    ));
-    let ground_y = -GROUND_THICKNESS * 0.5 * CELL_SIZE;
-    let water_y = (-WATER_DEPTH - WATER_THICKNESS * 0.5) * CELL_SIZE;
-    let deep_y = (-DEEP_WATER_DEPTH - WATER_THICKNESS * 0.5) * CELL_SIZE;
+    // --- Tile loop ---
+    for gx in 0..max {
+        for gz in 0..max {
+            if layout.ocean.contains(&(gx, gz)) {
+                continue; // V2: no column for ocean cells
+            }
 
-    for gx in 0..CELLS as i32 {
-        for gz in 0..CELLS as i32 {
             let wx = (gx as f32 + 0.5) * CELL_SIZE;
             let wz = (gz as f32 + 0.5) * CELL_SIZE;
 
-            if water_map.contains_key(&(gx, gz)) {
-                let (m, y) = if deep_set.contains(&(gx, gz)) {
-                    (deep_water_mat.clone(), deep_y)
-                } else {
-                    (water_mat.clone(), water_y)
-                };
-                commands.spawn((
-                    Mesh3d(water_mesh.clone()),
-                    MeshMaterial3d(m),
-                    Transform::from_xyz(wx, y, wz),
-                ));
+            let is_lake = layout.lake_cells.contains(&(gx, gz));
+            let is_river = layout.river_cells.contains(&(gx, gz));
+
+            let h = if is_lake {
+                layout.water_surfaces.get(&(gx, gz)).copied().unwrap_or(0.0) // V3
             } else {
-                let jitter = smooth_height(gx, gz) * GROUND_HEIGHT_JITTER * CELL_SIZE;
-                let mat = if shore_set.contains(&(gx, gz)) {
-                    shore_mat.clone()
-                } else {
-                    ground_mat.clone()
-                };
-                commands.spawn((
-                    Mesh3d(ground_mesh.clone()),
-                    MeshMaterial3d(mat),
-                    Transform::from_xyz(wx, ground_y + jitter, wz),
-                ));
-            }
+                layout.heights[&(gx, gz)]
+            };
+
+            let mesh_idx = ((h + 5.0) * 2.0).round() as usize;
+            let mesh_idx = mesh_idx.min(20);
+            let col_h = (h - DEPTH_FLOOR) * CELL_SIZE;
+            let surface_y = h * CELL_SIZE;
+            let center_y = surface_y - col_h / 2.0;
+
+            let mat = if is_lake || is_river {
+                let depth = layout.water_depth.get(&(gx, gz)).copied().unwrap_or(1);
+                match depth {
+                    1 => shallow_mat.clone(),
+                    2 => medium_mat.clone(),
+                    _ => deep_mat.clone(),
+                }
+            } else if layout.cliffs.contains(&(gx, gz)) {
+                cliff_mat.clone()
+            } else {
+                let sd = layout.shore_dist.get(&(gx, gz)).copied().unwrap_or(255);
+                match sd {
+                    1 => shore1_mat.clone(),
+                    2 => shore2_mat.clone(),
+                    3 => shore3_mat.clone(),
+                    _ => grass_mat.clone(),
+                }
+            };
+
+            commands.spawn((
+                Mesh3d(col_meshes[mesh_idx].clone()),
+                MeshMaterial3d(mat),
+                Transform::from_xyz(wx, center_y, wz),
+            ));
         }
     }
 
-    for spawn in node_spawns {
+    // --- Resource nodes ---
+    for spawn in &layout.nodes {
         let material = match spawn.resource {
             Resource::Copper => copper_mat.clone(),
             Resource::Metal => metal_mat.clone(),
@@ -699,6 +892,7 @@ fn setup_scene(
             spawn.origin,
             &TEMPLATES[spawn.template_idx],
             spawn.resource.primitive(),
+            &layout.heights,
         );
     }
 }
