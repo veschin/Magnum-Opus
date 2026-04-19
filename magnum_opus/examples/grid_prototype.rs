@@ -36,7 +36,7 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 const CELLS: u32 = 32;
 const CELL_SIZE: f32 = 1.5;
 const TILES_X: u32 = 2;
-const TILES_Z: u32 = 1;
+const TILES_Z: u32 = 2;
 const WORLD_W: u32 = CELLS * TILES_X;
 const WORLD_H: u32 = CELLS * TILES_Z;
 const NODES_PER_REGION: usize = 6;
@@ -203,9 +203,9 @@ fn noise_octave(gx: i32, gz: i32, scale: f32, seed: u64) -> f32 {
 }
 
 fn terrain_height(gx: i32, gz: i32) -> f32 {
-    let n1 = noise_octave(gx, gz, 16.0, TERRAIN_SEED) * 1.5;
-    let n2 = noise_octave(gx, gz, 6.0, TERRAIN_SEED ^ 0xFF01) * 0.3;
-    let raw = n1 + n2 + 1.5;
+    let n1 = noise_octave(gx, gz, 16.0, TERRAIN_SEED) * 2.5;
+    let n2 = noise_octave(gx, gz, 6.0, TERRAIN_SEED ^ 0xFF01) * 0.8;
+    let raw = n1 + n2 + 1.0;
     let ww = WORLD_W as i32 - 1;
     let wh = WORLD_H as i32 - 1;
     let dist = gx.min(ww - gx).min(gz.min(wh - gz)) as f32;
@@ -598,6 +598,76 @@ fn generate_layout() -> LayoutResult {
         }
     }
 
+    // 6b. River carving: lower terrain -0.5 along river paths
+    for &(rx, rz) in &river_cells {
+        if let Some(h) = heights.get_mut(&(rx, rz)) {
+            *h = (*h - 0.5).max(-2.0);
+        }
+    }
+
+    // 6c. Feature fixup: guarantee at least 1 lake and 1 waterfall
+    if lake_cells.is_empty() {
+        if let Some(&mid) = river_cells.iter().nth(river_cells.len() / 2) {
+            if let Some(h) = heights.get_mut(&mid) {
+                *h = (*h - 1.0).max(-2.0);
+            }
+            lake_cells.insert(mid);
+            let (mx, mz) = mid;
+            for (nx, nz) in [(mx + 1, mz), (mx - 1, mz), (mx, mz + 1), (mx, mz - 1)] {
+                if nx >= 0 && nx < ww && nz >= 0 && nz < wh
+                    && !ocean.contains(&(nx, nz))
+                    && river_cells.contains(&(nx, nz))
+                {
+                    if let Some(h) = heights.get_mut(&(nx, nz)) {
+                        *h = (*h - 0.5).max(-2.0);
+                    }
+                    lake_cells.insert((nx, nz));
+                }
+            }
+        }
+    }
+
+    let has_waterfall = river_cells.iter().any(|&(rx, rz)| {
+        let h = heights[&(rx, rz)];
+        [(rx + 1, rz), (rx - 1, rz), (rx, rz + 1), (rx, rz - 1)]
+            .iter()
+            .any(|&(nx, nz)| {
+                nx >= 0 && nx < ww && nz >= 0 && nz < wh
+                    && (heights[&(nx, nz)] - h).abs() > 1.0
+            })
+    });
+    if !has_waterfall {
+        let best = river_cells.iter().max_by(|&&a, &&b| {
+            let da = [(a.0+1,a.1),(a.0-1,a.1),(a.0,a.1+1),(a.0,a.1-1)]
+                .iter()
+                .filter_map(|&(nx,nz)| {
+                    if nx >= 0 && nx < ww && nz >= 0 && nz < wh {
+                        Some((heights[&(nx,nz)] - heights[&a]).abs())
+                    } else { None }
+                })
+                .fold(0.0_f32, f32::max);
+            let db = [(b.0+1,b.1),(b.0-1,b.1),(b.0,b.1+1),(b.0,b.1-1)]
+                .iter()
+                .filter_map(|&(nx,nz)| {
+                    if nx >= 0 && nx < ww && nz >= 0 && nz < wh {
+                        Some((heights[&(nx,nz)] - heights[&b]).abs())
+                    } else { None }
+                })
+                .fold(0.0_f32, f32::max);
+            da.partial_cmp(&db).unwrap()
+        });
+        if let Some(&cell) = best {
+            if let Some(h) = heights.get_mut(&cell) {
+                *h = (*h - 1.5).max(-2.0);
+            }
+        }
+    }
+
+    // Re-quantize after carving/fixup
+    for h in heights.values_mut() {
+        *h = (h.clamp(-2.0, 3.0) * 2.0).round() / 2.0;
+    }
+
     // 7. Resources
     let mut placed: BTreeSet<(i32, i32)> = BTreeSet::new();
     let mut nodes: Vec<NodeSpawn> = Vec::new();
@@ -684,25 +754,19 @@ fn generate_layout() -> LayoutResult {
     let water_depth = compute_water_depth(&all_water_so_far);
     let cliffs = detect_cliffs(&heights);
 
-    // 11. Render heights (smooth or stepped)
+    // 11. Render heights: smooth from mutated heights (includes carving/fixup)
     let render_heights = if TERRAIN_SMOOTH {
-        let mut raw: BTreeMap<(i32, i32), f32> = BTreeMap::new();
-        for gx in 0..ww {
-            for gz in 0..wh {
-                raw.insert((gx, gz), terrain_height(gx, gz).clamp(-2.0, 3.0));
-            }
-        }
-        let mut smoothed = raw.clone();
+        let mut smoothed = heights.clone();
         for gx in 0..ww {
             for gz in 0..wh {
                 if ocean.contains(&(gx, gz)) {
                     continue;
                 }
-                let mut sum = raw[&(gx, gz)];
+                let mut sum = heights[&(gx, gz)];
                 let mut cnt = 1.0_f32;
                 for (nx, nz) in [(gx + 1, gz), (gx - 1, gz), (gx, gz + 1), (gx, gz - 1)] {
                     if nx >= 0 && nx < ww && nz >= 0 && nz < wh && !ocean.contains(&(nx, nz)) {
-                        sum += raw[&(nx, nz)];
+                        sum += heights[&(nx, nz)];
                         cnt += 1.0;
                     }
                 }
@@ -752,7 +816,7 @@ fn setup_scene(
         Tonemapping::None,
         Projection::Orthographic(OrthographicProjection {
             scaling_mode: bevy::camera::ScalingMode::FixedVertical {
-                viewport_height: diag * 1.2,
+                viewport_height: world_x.max(world_z) * 1.1,
             },
             near: -500.0,
             far: 500.0,
@@ -788,30 +852,35 @@ fn setup_scene(
     let metal_mat = toon.add(ToonMaterial { base_color: Resource::Metal.color() });
     let coal_mat = toon.add(ToonMaterial { base_color: Resource::Coal.color() });
 
-    let ocean_mesh = meshes.add(Cuboid::new(world_x * 3.0, 0.3 * CELL_SIZE, world_z * 3.0));
-    commands.spawn((
-        Mesh3d(ocean_mesh),
-        MeshMaterial3d(ocean_mat.clone()),
-        Transform::from_xyz(world_x * 0.5, SEA_LEVEL * CELL_SIZE, world_z * 0.5),
-    ));
+    commands.insert_resource(ClearColor(Color::linear_rgb(0.08, 0.15, 0.30)));
 
     let unit_col = meshes.add(Cuboid::new(1.0, 1.0, 1.0));
 
     for gx in 0..ww {
         for gz in 0..wh {
-            if layout.ocean.contains(&(gx, gz)) {
-                continue;
-            }
+            let is_ocean = layout.ocean.contains(&(gx, gz));
             let wx = (gx as f32 + 0.5) * CELL_SIZE;
             let wz = (gz as f32 + 0.5) * CELL_SIZE;
             let is_river = layout.river_cells.contains(&(gx, gz));
             let is_lake = layout.lake_cells.contains(&(gx, gz));
-            let h = layout.render_heights[&(gx, gz)];
+
+            let h = if is_ocean {
+                SEA_LEVEL
+            } else {
+                layout.render_heights[&(gx, gz)]
+            };
             let col_h = (h - DEPTH_FLOOR) * CELL_SIZE;
             let surface_y = h * CELL_SIZE;
             let center_y = surface_y - col_h / 2.0;
 
-            let mat = if is_river || is_lake {
+            let is_waterfall = (is_river || is_lake)
+                && layout.cliffs.contains(&(gx, gz));
+
+            let mat = if is_ocean {
+                ocean_mat.clone()
+            } else if is_waterfall {
+                shallow_mat.clone()
+            } else if is_river || is_lake {
                 let depth = layout.water_depth.get(&(gx, gz)).copied().unwrap_or(1);
                 match depth {
                     1 => shallow_mat.clone(),
