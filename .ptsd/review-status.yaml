@@ -1,61 +1,6 @@
 features:
-  building-render:
-    stage: impl
-    tests: absent
-    review: passed
-    issues: 0
-  buildings:
-    stage: impl
-    tests: absent
-    review: passed
-    issues: 0
-  group-formation:
-    stage: impl
-    tests: absent
-    review: passed
-    issues: 0
-  manifold:
-    stage: impl
-    tests: absent
-    review: passed
-    issues: 0
-  manifold-distribute:
-    stage: tests
-    tests: absent
-    review: passed
-    issues: 0
-  placement:
-    stage: impl
-    tests: absent
-    review: passed
-    issues: 0
-  recipes-production:
-    stage: impl
-    tests: absent
-    review: passed
-    issues: 0
-  render-outline:
-    stage: impl
-    tests: absent
-    review: passed
-    issues: 0
-  render-pipeline:
-    stage: impl
-    tests: absent
-    review: passed
-    issues: 0
   world-foundation:
     stage: impl
-    tests: absent
-    review: passed
-    issues: 0
-  world-generation:
-    stage: impl
-    tests: absent
-    review: passed
-    issues: 0
-  world-render:
-    stage: impl
-    tests: absent
+    tests: passing
     review: passed
     issues: 0
