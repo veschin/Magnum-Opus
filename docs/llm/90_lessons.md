@@ -7,11 +7,11 @@ kind: lesson
 
 Context: greenfield reset on 2026-04-17 (commit `8bc169d`). What shipped did not match what was promised, and tests lied about the gap.
 
-See also: [20_contracts.md](20_contracts.md) for the rules this lesson motivated.
+See also: [20_contracts.md](20_contracts.md) for the rules this lesson motivated, [10_scope.md](10_scope.md) for the scope-drift failure from the v2 session that followed.
 
 ## Measured gap between design and code
 
-| Item                | Promised (ECS.md) | Actual (v1 code) |
+| Item                | Promised (legacy ECS.md, now deleted) | Actual (v1 code) |
 |---------------------|-------------------|------------------|
 | Components          | 37                | 67               |
 | Resources           | 15                | 44               |
@@ -42,7 +42,7 @@ Multiple plugins registered the same resources "idempotently". No single writer,
 
 ### 3. Cross-plugin event hacks
 
-Events emitted in a later-running phase consumed by an earlier-running phase in another plugin required tick-N+1 latency workarounds, documented as "designed exceptions" in `docs/ARCH.md` §13. Exceptions outnumbered rules.
+Events emitted in a later-running phase consumed by an earlier-running phase in another plugin required tick-N+1 latency workarounds, documented as "designed exceptions" in the v1 ARCH.md §13 (since deleted). Exceptions outnumbered rules.
 
 ### 4. Schedule mixing
 

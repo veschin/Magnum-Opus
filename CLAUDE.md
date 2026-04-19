@@ -1,192 +1,171 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+Guidance for Claude Code (claude.ai/code) in this repository.
 
-## Project status
+## Project state (authoritative; keep synced with `cargo test`)
 
-**Magnum Opus** - roguelike factory game. 1-2h runs, meta-progression, Factorio core loop in a fantasy setting. God-view, player = spirit, biome-native faceless minions. Target visual: 3D isometric + pixel-art shaders.
+**Magnum Opus** - greenfield Rust/Bevy experiment. Everything larger than the
+core was rolled back on 2026-04-19 at the owner's direction because a previous
+session had expanded the scope without permission.
 
-**Current stage: greenfield rewrite.** The previous implementation was deleted on 2026-04-17. The only things that survived are the design layer and the pipeline:
+What exists right now:
 
-- `docs/` - architecture, ECS decomposition, gameplay flow, ideas registry, visual style. **Source of truth for WHAT to build.**
-- `.ptsd/` - PRD, seeds, BDD scenarios, feature state, task tracking. **Source of truth for HOW we proceed.**
-- `magnum_opus/` - empty Rust crate (`src/lib.rs` is a stub). Everything lives here once written.
+- `magnum_opus/src/core/` - module contract system (four archetypes, four
+  installers, `ModuleRegistry`, `Phase` enum, `MetricsRegistry`, `Tick`).
+- `magnum_opus/src/world_config/` - `WorldConfigModule` (StaticData). Writes
+  `WorldConfig { width=64, height=64, seed=0x9E3779B97F4A7C15 }`.
+- `magnum_opus/src/grid/` - `GridModule` (SimDomain, `Phase::World`). Reads
+  `WorldConfig`, writes `Grid { width, height, occupancy: BTreeMap, dims_set }`,
+  publishes `grid.occupancy_count` gauge. Occupancy stays empty in F1.
+- `magnum_opus/tests/` - 29 tests, all green. Core contract suite + grid +
+  world-config smoke.
 
-**Do not attempt to restore or patch the old code.** It is gone from `src/` on purpose. Reference via `git log` if you need to see what the last implementation looked like, but treat it as cautionary, not canonical.
+What does not exist (and must not be written without an explicit ask):
+
+- Any binary (`src/main.rs`). The crate is lib-only.
+- Rendering, UI, examples. No `bevy_egui`, no pixel-art pipeline, no `examples/`.
+- Landscape, buildings, recipes, manifold, groups, placement command bus,
+  production, transport, fog, creatures, combat, progression, meta-currency.
+- Seed/BDD artifacts. `.ptsd/bdd/` and `.ptsd/seeds/` are empty on purpose.
+
+## Scope guard (READ BEFORE DOING ANYTHING)
+
+A prior session turned "add a grid" into eleven features plus two rendering
+rewrites over ~24 hours. The owner never asked for any of it. The full
+post-mortem lives at `docs/llm/10_scope.md`.
+
+Operating rules:
+
+1. The owner's request defines scope **literally**. Quote it back before
+   starting; anything not inside the quoted text is out of scope.
+2. When the current feature is done, **stop and ask**. Do not start the
+   "next logical feature". There is no next feature until the owner names one.
+3. `.ptsd/docs/PRD.md`, the `.claude/skills/write-*` skills, and any old
+   `docs/llm/` sketches describe **possible** futures. They are not a queue.
+4. Tie-breakers in favour of doing less. If unsure whether something is in
+   scope, it is out of scope.
+
+## Build & test
+
+```
+cd magnum_opus && cargo build          # builds the lib
+cd magnum_opus && cargo test           # 29 tests, all passing
+cd magnum_opus && cargo run            # fails - lib-only crate, no binary
+```
 
 ## Tech stack
 
 - Rust edition 2024
-- Bevy 0.18 (ECS), bevy_egui 0.39 (UI)
-- Simulation-first architecture: zero engine dependencies in game logic, headless testing
+- Bevy 0.18 (ECS only; no renderer is wired up)
 
-## Build & run
+That is the entire dependency list. `bevy_egui` and everything else a past
+session added are gone.
 
-```
-cd magnum_opus && cargo build          # builds the empty crate
-cd magnum_opus && cargo test           # no tests yet
-cd magnum_opus && cargo run            # no binary yet - lib-only crate
-```
+## Reference docs (load on demand)
 
-A binary (`src/main.rs`) and tests will appear as the PTSD pipeline advances past the seed stage for each feature.
+The only live design docs are in `docs/llm/`, short and LLM-facing:
 
-## Design inputs (load on demand)
+- [docs/llm/00_index.md](docs/llm/00_index.md) - graph of docs.
+- [docs/llm/10_scope.md](docs/llm/10_scope.md) - the scope guard + scope-drift
+  post-mortem. Read this if you are about to add a file outside `core/` /
+  `grid/` / `world_config/`.
+- [docs/llm/20_contracts.md](docs/llm/20_contracts.md) - module archetype
+  traits, installer methods, the 18 enforced invariants. Source of truth for
+  the core API.
+- [docs/llm/21_sketches.md](docs/llm/21_sketches.md) - real `grid` and
+  `world_config` module code, annotated as worked examples of the traits.
+- [docs/llm/90_lessons.md](docs/llm/90_lessons.md) - v1 and scope-drift
+  post-mortems.
 
-When a task needs architectural context, load the relevant doc explicitly rather than assuming:
-
-- Architecture principles, phase ordering, invariants: @docs/ARCH.md
-- ECS decomposition (components, resources, systems): @docs/ECS.md
-- Gameplay walkthrough from meta-hub to scoring: @docs/GAMEPLAY.md
-- Visual/art direction: @docs/VISUALS.md
-- Bevy ecosystem notes and PoC results: @docs/BEVY_ECOSYSTEM.md, @docs/ENGINE_PoC.md
-- Ideas registry (scoped, tiered, most are locked): @docs/ideas.yaml
-- Current PRD: @.ptsd/docs/PRD.md
-
-These documents describe the **target state**, not what is currently in `magnum_opus/src/`. Treat counts, plugin lists, and system inventories in `docs/` as design intent until the corresponding feature reaches the impl stage in PTSD.
-
-## Design vocabulary
-
-- **Building Group** - adjacent buildings sharing a manifold (auto-formed)
-- **Manifold** - shared resource pool inside a group
-- **Rune Path / Pipe** - player-placed transport between groups (solids / liquids)
-- **Opus Tree** - run goal: production throughput milestones + mini-opus branches
-- **Mini-Opus** - optional side challenge for meta-currency
-- **Tier Gate** - creature nest clearing unlocks next tier (T1->T2->T3)
-- **Mall** - group that produces buildings into Inventory
-- **Combat Group** - imp camp consuming weapons+food, provides protection and organic resources
+Everything else (ARCH.md, ECS.md, GAMEPLAY.md, VISUALS.md, BEVY_ECOSYSTEM.md,
+ENGINE_PoC.md, ideas.yaml, PRD_legacy_v1.md) was deleted on 2026-04-19.
+`git log` is the archive.
 
 ## Bevy 0.18 API gotchas
 
-- Events register via `app.add_message::<EventType>()` (not `add_event`)
-- Systems registered with `app.add_systems(Update, system.in_set(Phase::X))`
-- Resources: `app.insert_resource(val)` or `app.init_resource::<Type>()`
+- Events register via `app.add_message::<EventType>()`.
+- Systems register through installers (`ctx.add_system`, `ctx.add_command_drain`,
+  `ctx.add_metric_publish`). Modules never touch `&mut App`.
+- Resources: `app.insert_resource(val)` or `app.init_resource::<Type>()`.
 
 ## Hooks and skills
 
-- `.claude/hooks/cargo-fmt.sh` - runs `rustfmt --edition 2024` on every Edit/Write of a `.rs` file
-- `.claude/hooks/ptsd-*.sh` - enforce PTSD pipeline gates (see block below)
-- `.claude/hooks/check-file-size.sh` - blocks Read on files >500 lines (use offset/limit or Grep)
-- `/reality-check` skill - audit build, tests, code debt, PTSD state, and CLAUDE.md drift. Run it whenever claims in this file feel suspicious.
-
-If `cargo build` or `cargo test` numbers in this file start looking off, you were probably lied to by a past session. Run `/reality-check` and correct this file.
+- `.claude/hooks/cargo-fmt.sh` - formats `.rs` on Edit/Write.
+- `.claude/hooks/check-file-size.sh` - blocks `Read` on files over 500 lines;
+  use `offset` / `limit` or `Grep`.
+- `.claude/hooks/ptsd-*.sh` - enforce PTSD pipeline gates on `.ptsd/` edits.
+- `.claude/skills/core-module/` - skill for implementing a new core module.
+  Only useful when the owner has explicitly asked for a new module.
+- `.claude/skills/write-*` and `.claude/skills/review-*` - PTSD pipeline
+  ritual skills. Only valid when the owner has greenlit a new feature. Not
+  self-starting.
 
 <!-- ---ptsd--- -->
-# Claude Agent Instructions
+# PTSD pipeline
 
-## Authority Hierarchy (ENFORCED BY HOOKS)
+PTSD is the per-feature state machine. It is a tool for executing an
+owner-approved feature, not a reason to start one.
 
-PTSD (iron law) > User (context provider) > Assistant (executor)
+## Authority
 
-- PTSD decides what CAN and CANNOT be done. Pipeline, gates, validation -- non-negotiable.
-  Hooks enforce this automatically -- writes that violate pipeline are BLOCKED.
-- User provides context and requirements. User also follows ptsd rules.
-- Assistant executes within ptsd constraints. Writes code, docs, tests on behalf of user.
+Owner > PTSD > Assistant. The assistant never escalates from "no feature
+requested" to "let's start a feature" on its own.
 
-## Session Start Protocol
+## Session start
 
-EVERY session, BEFORE any work:
-1. Run: ptsd context --agent -- see full pipeline state
-2. Run: ptsd task next --agent -- get next task
-3. Follow output exactly.
+When the owner gives a task:
 
-## Commands (always use --agent flag)
+1. Quote the task literally.
+2. `ptsd status --agent` to see the live feature state.
+3. If the task maps to an existing active feature, proceed with the matching
+   stage skill. If it does not, ask the owner to confirm the feature name and
+   scope before editing `.ptsd/`.
 
-- ptsd context --agent              -- full pipeline state (auto-injected by hooks)
-- ptsd status --agent               -- project overview
-- ptsd task next --agent            -- next task to work on
-- ptsd task update <id> --status WIP -- mark task in progress
-- ptsd validate --agent             -- check pipeline before commit
-- ptsd feature list --agent         -- list all features
-- ptsd seed init <id> --agent       -- initialize seed directory
-- ptsd gate-check --file <path> --agent -- check if file write is allowed
-- ptsd test map --feature <id> <test-file> -- map test without BDD (for lite pipeline)
-- ptsd feature pipeline <id> <profile> -- change feature pipeline
-- ptsd migrate --agent            -- migrate project to current version
+## Commands (always use `--agent`)
 
-## Skills
+- `ptsd context --agent` - pipeline state (hooks auto-inject).
+- `ptsd status --agent` - project overview.
+- `ptsd validate --agent` - pre-commit check.
+- `ptsd feature list --agent`, `ptsd feature show <id> --agent`
+- `ptsd test map --feature <id> <test-file>` - lite-pipeline test mapping.
+- `ptsd review <id> <stage> <score>` - advance review.
+- `ptsd gate-check --file <path> --agent` - is this write allowed?
 
-PTSD pipeline skills are in `.claude/skills/` -- auto-loaded when relevant.
+## Pipeline profiles
 
-| Skill | When to Use |
-|-------|------------|
-| write-prd | Creating or updating a PRD section |
-| write-seed | Creating seed data for a feature |
-| write-bdd | Writing Gherkin BDD scenarios |
-| write-tests | Writing tests from BDD scenarios |
-| write-impl | Implementing to make tests pass |
-| create-tasks | Adding tasks to tasks.yaml |
-| review-prd | Reviewing PRD before advancing to seed |
-| review-seed | Reviewing seed data before advancing to bdd |
-| review-bdd | Reviewing BDD before advancing to tests |
-| review-tests | Reviewing tests before advancing to impl |
-| review-impl | Reviewing implementation after tests pass |
-| workflow | Session start or when unsure what to do next |
-| adopt | Bootstrapping existing project into PTSD |
+| Profile  | Stages                                | Use for                          |
+|----------|---------------------------------------|----------------------------------|
+| full     | PRD -> Seed -> BDD -> Tests -> Impl       | Complex, data-heavy features     |
+| standard | PRD -> BDD -> Tests -> Impl              | Default                          |
+| lite     | PRD -> Tests -> Impl                    | Simple utilities / config        |
 
-Use the corresponding write skill, then review skill at each pipeline stage.
+F1 (`world-foundation`) is lite.
 
-Note: write-seed is only required for full pipeline. write-bdd is required for full and standard pipelines. Lite pipeline skips both -- write tests directly from PRD.
+## Commit format
 
-## Pipeline Profiles
+`[SCOPE] type: message`
 
-Each feature has a pipeline profile that determines required stages:
-
-| Profile | Stages | Use For |
-|---------|--------|---------|
-| full | PRD -> Seed -> BDD -> Tests -> Impl | Complex, data-heavy features |
-| standard | PRD -> BDD -> Tests -> Impl | Default. Most features |
-| lite | PRD -> Tests -> Impl | Simple utilities, config |
-
-Check feature pipeline: `ptsd feature show <id> --agent`
-Change pipeline: `ptsd feature pipeline <id> full|standard|lite`
-
-Each required stage needs review score >= 7 before advancing.
-Hooks enforce gates automatically -- blocked writes show the reason.
+- Scopes: `PRD`, `SEED`, `BDD`, `TEST`, `IMPL`, `TASK`, `STATUS`.
+- Types: `feat`, `add`, `fix`, `refactor`, `remove`, `update`.
+- One scope per commit. Hooks reject mixed-scope commits.
 
 ## Rules
 
-- NO mocks for internal code. Real tests, real files, temp directories.
-- NO garbage files. Every file must link to a feature.
-- NO hiding errors. Explain WHY something failed.
-- NO over-engineering. Minimum code for the current task.
-- ALWAYS run: ptsd validate --agent before committing.
-- COMMIT FORMAT: [SCOPE] type: message
-  Scopes: PRD, SEED, BDD, TEST, IMPL, TASK, STATUS
-  Types: feat, add, fix, refactor, remove, update
+- No mocks of internal code. Real tests, real files, temp dirs.
+- No garbage files. Every file links to a feature.
+- No hidden errors. Say why something failed.
+- No over-engineering. Minimum code for the current task.
+- Run `ptsd validate --agent` before committing.
+- Never use `--force`, `--skip-validation`, `--no-verify`.
 
 ## Troubleshooting
 
-When ptsd status/validate shows unexpected results, debug with these steps:
-
 | Symptom | Cause | Fix |
 |---------|-------|-----|
-| TESTS:0 but test files exist | Tests not mapped to features | `ptsd test map .ptsd/bdd/<id>.feature <test-file>` or `ptsd test map --feature <id> <test-file>` (lite pipeline) |
-| BDD:0 but .feature files exist | State hashes empty, SyncState not run | `ptsd status --agent` triggers sync; if still 0, check `.ptsd/bdd/<id>.feature` has `@feature:<id>` tag on line 1 |
-| Feature stuck at wrong stage | review-status.yaml stale or stage not advanced | Run `ptsd review <id> <stage> <score>` to advance; check `ptsd context --agent` for blockers |
-| "no test files mapped" on `ptsd test run` | Test mapping missing in state.yaml | `ptsd test map .ptsd/bdd/<id>.feature <test-file>` or `--feature <id> <test-file>` |
-| Gate blocks file write | File not in allowed list for current stage | Check `ptsd gate-check --file <path> --agent`; advance feature to correct stage first |
-| Validate shows "mock detected" | Test file contains mock/stub patterns | Replace mocks with real file-based tests in temp directories |
-| Regression warning on status | Artifact file changed after stage was reviewed | Re-review the stage: `ptsd review <id> <stage> <score>` |
-
-### Debug flow
-1. `ptsd context --agent` -- shows next action, blockers, stage per feature
-2. `ptsd feature show <id> --agent` -- shows artifact counts and test stats
-3. `ptsd validate --agent` -- shows all pipeline violations
-4. Check `.ptsd/state.yaml` -- hashes, test mappings, stages
-5. Check `.ptsd/review-status.yaml` -- review verdicts per feature
-
-### Test mapping
-Features need test files mapped to track results:
-- Standard/full pipeline: `ptsd test map .ptsd/bdd/<id>.feature <test-file>` (reads @feature tag from BDD)
-- Lite pipeline (no BDD): `ptsd test map --feature <id> <test-file>` (direct mapping)
-Without mapping, ptsd cannot track test results per feature.
-
-## Forbidden
-
-- Mocking internal code
-- Skipping pipeline steps
-- Hiding errors or pretending something works
-- Generating files not linked to a feature
-- Using --force, --skip-validation, --no-verify
-
+| `TESTS:0` but test files exist | Tests unmapped | `ptsd test map --feature <id> <test-file>` (lite) or via BDD feature file |
+| `BDD:0` but `.feature` files exist | State hashes empty | `ptsd status --agent` triggers sync; check `@feature:<id>` tag on line 1 |
+| Feature stuck at wrong stage | review-status stale | `ptsd review <id> <stage> <score>` |
+| "No test files mapped" on `ptsd test run` | Missing mapping | `ptsd test map ...` |
+| Gate blocks file write | Stage disallows path | `ptsd gate-check --file <path> --agent`; advance stage first |
+| Regression warning | Artifact changed after review | Re-review the stage |
 <!-- ---ptsd--- -->

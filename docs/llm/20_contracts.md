@@ -10,7 +10,7 @@ Four archetypes, four traits. One `ModuleRegistry` in core enforces
 cross-cutting invariants at `App` build time. One `InstallCtx` per archetype
 enforces per-module contract coverage at install time.
 
-See also: [90_lessons.md](90_lessons.md), [21_sketches.md](21_sketches.md).
+See also: [10_scope.md](10_scope.md), [21_sketches.md](21_sketches.md), [90_lessons.md](90_lessons.md).
 
 ## Archetypes
 
