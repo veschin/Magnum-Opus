@@ -2,7 +2,6 @@
 
 use magnum_opus::core::*;
 use magnum_opus::grid::GridModule;
-use magnum_opus::placement::PlacementInputModule;
 use magnum_opus::world_config::WorldConfigModule;
 
 #[test]
@@ -10,7 +9,6 @@ fn grid_publishes_occupancy_count_gauge() {
     let mut app = Harness::new()
         .with_data::<WorldConfigModule>()
         .with_sim::<GridModule>()
-        .with_input::<PlacementInputModule>()
         .build();
     app.update();
     app.update();
